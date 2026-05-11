@@ -1,0 +1,45 @@
+package dev.by1337.sync.server.config;
+
+import dev.by1337.sync.common.security.Ed25519;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.PublicKey;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class Config {
+
+    private static final Logger log = LoggerFactory.getLogger(Config.class);
+    private List<PublicKey> authorized_keys;
+    public final int tcp_port = 8013;
+
+
+    public Config() {
+        reloadKeys();
+    }
+
+    public void reloadKeys() {
+        List<PublicKey> newKeys = new ArrayList<>();
+        File home = new File("./authorized_keys");
+        home.mkdirs();
+        for (File file : home.listFiles()) {
+            try {
+                var data = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+                PublicKey key = Ed25519.publicKeyFromBase64(data);
+                newKeys.add(key);
+            } catch (Exception e) {
+                log.error("Failed to load public key from {}", file.getPath());
+            }
+        }
+        authorized_keys = Collections.unmodifiableList(newKeys);
+    }
+
+    public List<PublicKey> getAuthorizedKeys() {
+        return authorized_keys;
+    }
+}
