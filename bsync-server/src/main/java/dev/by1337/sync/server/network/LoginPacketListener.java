@@ -11,7 +11,6 @@ import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.server.DedicatedServer;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelOption;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import org.slf4j.Logger;
@@ -29,7 +28,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
     private static final SecureRandom secureRandom = new SecureRandom();
     private int protocolVersion = Packets.PROTOCOL_VERSION;
     private State state = State.HELLO;
-    private String id;
+    private String id = "unknown";
     private final DedicatedServer server;
     private byte[] nonce;
 
@@ -49,6 +48,12 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
             if (packet instanceof C2SHelloPacket hello) {
                 protocolVersion = hello.protocol;
                 id = hello.id;
+                if (protocolVersion < 0 || protocolVersion > Packets.PROTOCOL_VERSION) {
+                    disconnect(ctx, "Unsupported protocol version " + protocolVersion);
+                    return;
+                } else if (protocolVersion < Packets.PROTOCOL_VERSION) {
+                    log.warn("Legacy protocol version {} {}[{}]", protocolVersion, id, ctx.channel().remoteAddress());
+                }
                 state = State.LOGIN;
                 nonce = new byte[32];
                 secureRandom.nextBytes(nonce);
@@ -89,6 +94,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
             }
         }
     }
+
     private void send(ChannelHandlerContext ctx, Packet packet) {
         var buf = ctx.channel().alloc().ioBuffer();
         Packets.write(buf, protocolVersion, packet);
@@ -119,7 +125,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
     private void disconnect(ChannelHandlerContext ctx, String message) {
         if (ctx.channel().isOpen()) {
             ctx.channel().close();
-            log.info("Disconnect unauthorized connection {}, reason: {}", ctx.channel().remoteAddress(), message);
+            log.info("Disconnect unauthorized connection {}[{}], reason: {}", id, ctx.channel().remoteAddress(), message);
         }
     }
 
