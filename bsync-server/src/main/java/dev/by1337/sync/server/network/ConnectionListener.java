@@ -5,7 +5,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import dev.by1337.sync.common.netty.handler.FrameDecoder;
 import dev.by1337.sync.common.netty.handler.FrameEncoder;
 import dev.by1337.sync.server.DedicatedServer;
-import dev.by1337.sync.server.util.LazyLoad;
+import dev.by1337.sync.common.util.LazyLoad;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.Epoll;
@@ -41,7 +41,7 @@ public class ConnectionListener {
     }
 
 
-    public void startTcpServerListener(int port) {
+    public int startTcpServerListener(int port) {
         synchronized (channels) {
             Class<? extends ServerSocketChannel> channelClass;
             EventLoopGroup loopGroup;
@@ -55,7 +55,7 @@ public class ConnectionListener {
                 log.info("Using default channel type");
             }
 
-            this.channels.add(new ServerBootstrap().channel(channelClass)
+            var v = new ServerBootstrap().channel(channelClass)
                     .childHandler(new ChannelInitializer<>() {
                         protected void initChannel(final Channel channel) {
                             try {
@@ -75,9 +75,10 @@ public class ConnectionListener {
                     .group(loopGroup)
                     .localAddress(port)
                     .bind()
-                    .syncUninterruptibly());
-
+                    .syncUninterruptibly();
+            this.channels.add(v);
         }
+        return port;
     }
 
     public void stop() {

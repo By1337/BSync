@@ -31,6 +31,6 @@ public final class S2CNoncePacket implements Packet {
 
     @Override
     public int getId() {
-        return Packets.C2S_HELLO_PACKET;
+        return Packets.S2C_NONCE_PACKET;
     }
 }

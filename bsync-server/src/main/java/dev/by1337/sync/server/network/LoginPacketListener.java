@@ -1,5 +1,7 @@
 package dev.by1337.sync.server.network;
 
+import com.google.common.base.Joiner;
+import com.google.common.collect.Iterators;
 import dev.by1337.sync.common.netty.handler.PacketDecoder;
 import dev.by1337.sync.common.netty.handler.PacketEncoder;
 import dev.by1337.sync.common.packet.Packet;
@@ -7,9 +9,11 @@ import dev.by1337.sync.common.packet.Packets;
 import dev.by1337.sync.common.packet.c2s.C2SHelloPacket;
 import dev.by1337.sync.common.packet.c2s.C2SLoginPacket;
 import dev.by1337.sync.common.packet.s2c.S2CNoncePacket;
+import dev.by1337.sync.common.packet.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.server.DedicatedServer;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
@@ -21,7 +25,10 @@ import java.security.GeneralSecurityException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 
 public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
     private static final Logger log = LoggerFactory.getLogger(LoginPacketListener.class);
@@ -38,12 +45,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) throws Exception {
-        Packet packet;
-        try {
-            packet = Packets.read(buf, protocolVersion);
-        } finally {
-            buf.release();
-        }
+        Packet packet = Packets.read(buf, protocolVersion);
         if (state == State.HELLO) {
             if (packet instanceof C2SHelloPacket hello) {
                 protocolVersion = hello.protocol;
@@ -85,10 +87,11 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
 
                 pipeline.replace("timeout", "timeout", new ReadTimeoutHandler(120));
                 Connection connection = new Connection(ctx.channel(), server, id, protocolVersion);
-                pipeline.replace("login", "auth", connection);
-                pipeline.addAfter("splitter", "decoder", new PacketDecoder(protocolVersion));
-                pipeline.addBefore("prepender", "encoder", new PacketEncoder(protocolVersion));
+                pipeline.replace("login", "handler", connection);
+                pipeline.addBefore("splitter", "decoder", new PacketDecoder(protocolVersion));
+                pipeline.addAfter("prepender", "encoder", new PacketEncoder(protocolVersion));
                 server.clientList().addConnection(connection);
+                connection.send(new S2CPostLoginPacket());
             } else {
                 disconnect(ctx, "Unexpected packet type " + packet + " " + state);
             }

@@ -30,11 +30,11 @@ public class Ed25519 {
         return sig.verify(signature);
     }
 
-    public static String privateKeyToBase64(PrivateKey privateKey) {
+    public static String keyToBase64(PrivateKey privateKey) {
         return Base64.getEncoder().encodeToString(privateKey.getEncoded());
     }
 
-    public static String publicKeyToBase64(PublicKey publicKey) {
+    public static String keyToBase64(PublicKey publicKey) {
         return Base64.getEncoder().encodeToString(publicKey.getEncoded());
     }
 
@@ -76,8 +76,8 @@ public class Ed25519 {
 
     public static KeyPairStore saveKeyPairToBase64(KeyPair keyPair) {
         KeyPairStore store = new KeyPairStore();
-        store.setPrivateKey(privateKeyToBase64(keyPair.getPrivate()));
-        store.setPublicKey(publicKeyToBase64(keyPair.getPublic()));
+        store.setPrivateKey(keyToBase64(keyPair.getPrivate()));
+        store.setPublicKey(keyToBase64(keyPair.getPublic()));
         return store;
     }
 
@@ -88,8 +88,8 @@ public class Ed25519 {
             System.out.println("Ключи сгенерированы успешно!");
 
             // 2. Сохранение ключей в Base64
-            String privateKeyBase64 = privateKeyToBase64(keyPair.getPrivate());
-            String publicKeyBase64 = publicKeyToBase64(keyPair.getPublic());
+            String privateKeyBase64 = keyToBase64(keyPair.getPrivate());
+            String publicKeyBase64 = keyToBase64(keyPair.getPublic());
             System.out.println("Приватный ключ (Base64): " + privateKeyBase64);
             System.out.println("Публичный ключ (Base64): " + publicKeyBase64);
 

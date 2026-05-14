@@ -33,7 +33,7 @@ public final class C2SLoginPacket implements Packet {
 
     @Override
     public int getId() {
-        return Packets.C2S_HELLO_PACKET;
+        return Packets.C2S_LOGIN_PACKET;
     }
 
     @Override

@@ -19,14 +19,14 @@ public final class C2SHelloPacket implements Packet {
 
     @Override
     public void read(ByteBuf buf, int protocolVersion) {
-        buf.writeInt(protocolVersion);
-        ByteBufCodecs.writeUtf8(buf, id);
+        protocol = buf.readInt();
+        id = ByteBufCodecs.readUtf8(buf);
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
-        protocol = buf.readInt();
-        id = ByteBufCodecs.readUtf8(buf);
+        buf.writeInt(protocolVersion);
+        ByteBufCodecs.writeUtf8(buf, id);
     }
 
     @Override

@@ -5,8 +5,11 @@ import dev.by1337.sync.server.console.CommandManager;
 import dev.by1337.sync.server.console.TerminalReader;
 import dev.by1337.sync.server.network.ClientList;
 import dev.by1337.sync.server.network.ConnectionListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DedicatedServer {
+    private static final Logger log = LoggerFactory.getLogger(DedicatedServer.class);
     private final Config config;
     private final ConnectionListener connectionListener;
     private volatile boolean running;
@@ -18,8 +21,10 @@ public class DedicatedServer {
         clientList = new ClientList();
         connectionListener = new ConnectionListener(this);
         running = true;
-        connectionListener.startTcpServerListener(config.tcp_port);
+        log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
         commandManager = new CommandManager();
+    }
+    public void readTerminal(){
         TerminalReader terminalReader = new TerminalReader(this, commandManager);
         terminalReader.start();
     }

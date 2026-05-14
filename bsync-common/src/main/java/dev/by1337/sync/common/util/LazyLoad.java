@@ -1,4 +1,4 @@
-package dev.by1337.sync.server.util;
+package dev.by1337.sync.common.util;
 
 import java.util.function.Supplier;
 

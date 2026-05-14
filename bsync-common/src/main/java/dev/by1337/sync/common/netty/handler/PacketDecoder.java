@@ -4,6 +4,7 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
+import io.netty.handler.codec.DecoderException;
 
 import java.util.List;
 
@@ -16,6 +17,10 @@ public class PacketDecoder extends ByteToMessageDecoder {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buf, List<Object> out) throws Exception {
-        out.add(Packets.read(buf, protocolVersion));
+        var v = Packets.read(buf, protocolVersion);
+        if (buf.readableBytes() > 0) {
+            throw new DecoderException("Packet " + v + " has more bytes than expected " + buf.readableBytes());
+        }
+        out.add(v);
     }
 }
