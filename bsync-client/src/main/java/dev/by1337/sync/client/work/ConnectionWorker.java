@@ -22,10 +22,14 @@ public final class ConnectionWorker {
     }
 
     public void execute(Runnable runnable) {
-        if (!queue.add(runnable)) {
-            log.warn("Failed to add runnable to queue", new Throwable());
+        if (isWorkerThread()) {
+            runnable.run();
+        } else {
+            if (!queue.add(runnable)) {
+                log.warn("Failed to add runnable to queue", new Throwable());
+            }
+            LockSupport.unpark(thread);
         }
-        LockSupport.unpark(thread);
     }
 
     public void schedule(Runnable runnable, long ms) {
@@ -74,8 +78,12 @@ public final class ConnectionWorker {
             }
         }
     }
+
     public boolean isWorkerThread() {
         return thread == Thread.currentThread();
+    }
+    public void assertThread(){
+        if (!isWorkerThread()) throw new IllegalStateException("Not a worker thread");
     }
 
     public static class ScheduledTask implements Runnable, Comparable<ScheduledTask> {

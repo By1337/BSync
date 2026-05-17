@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractChannel {
     private static final Logger log = LoggerFactory.getLogger(AbstractChannel.class);
     private final Connection connection;
-    private final String id;
+    protected final String id;
     private int requestId;
     private final Int2ObjectMap<RequestHolder> requests = new Int2ObjectOpenHashMap<>();
     private final SingleSemaphore requestsCleanupTask = new SingleSemaphore();
@@ -31,8 +31,10 @@ public abstract class AbstractChannel {
         connection.send(new ChanneledPacket(id, packet));
     }
 
-    public void receive(Packet packet) {
-        if (!connection.isWorkerThread()){
+    public abstract void onReceive(Packet packet);
+
+    public final void receive(Packet packet) {
+        if (!connection.isWorkerThread()) {
             connection.execute(() -> receive(packet));
             return;
         }
@@ -48,6 +50,12 @@ public abstract class AbstractChannel {
                 }
             } else {
                 log.error("Got response for outdated request {} ", r);
+            }
+        } else {
+            try {
+                onReceive(packet);
+            } catch (Exception e) {
+                log.error("Failed to handle packet {}:{}", packet, id, e);
             }
         }
     }
@@ -90,11 +98,13 @@ public abstract class AbstractChannel {
 
     public abstract void onUnregister();
 
-    public void onClose(){
+    public abstract void onChannelActive();
+
+    public void onClose() {
         requests.values().forEach(v -> {
             try {
                 v.callback.accept(null);
-            }catch (Exception err){
+            } catch (Exception err) {
                 log.error("Failed to accept response {}", id, err);
             }
         });
@@ -103,6 +113,22 @@ public abstract class AbstractChannel {
 
     public String id() {
         return id;
+    }
+
+    public void execute(Runnable runnable) {
+        connection.execute(runnable);
+    }
+
+    public void schedule(Runnable runnable, long ms) {
+        connection.schedule(runnable, ms);
+    }
+
+    public boolean isWorkerThread() {
+        return connection.isWorkerThread();
+    }
+
+    public void assertThread() {
+        connection.assertThread();
     }
 
     public static class RequestHolder implements Comparable<AbstractChannel.RequestHolder> {

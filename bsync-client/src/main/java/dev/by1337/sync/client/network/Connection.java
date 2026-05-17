@@ -94,7 +94,7 @@ public class Connection {
                 send(new PongPacket(System.currentTimeMillis()));
             } else if (packet instanceof PongPacket p) {
                 ping = System.currentTimeMillis() - p.timestamp;
-                log.info("ping {}", ping);
+               // log.info("ping {}", ping);
             } else {
                 log.error("Packet received unknown packet {}", packet);
             }
@@ -114,6 +114,9 @@ public class Connection {
 
     void postLogin(ConnectionHandler connection) {
         log.info("Connected to {}:{}", config.ip, config.port);
+        worker.execute(() -> {
+            channels.values().forEach(AbstractChannel::onChannelActive);
+        });
     }
 
     public void send(Packet packet) {
@@ -155,6 +158,10 @@ public class Connection {
 
     public boolean isWorkerThread() {
         return worker.isWorkerThread();
+    }
+
+    public void assertThread() {
+        worker.assertThread();
     }
 
     public long ping() {

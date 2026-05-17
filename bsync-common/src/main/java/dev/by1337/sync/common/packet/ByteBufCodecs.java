@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 public class ByteBufCodecs {
 
@@ -18,5 +19,13 @@ public class ByteBufCodecs {
         byte[] bytes = new byte[length];
         buf.readBytes(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    public static void writeUUID(ByteBuf buf, UUID uuid) {
+        buf.writeLong(uuid.getMostSignificantBits());
+        buf.writeLong(uuid.getLeastSignificantBits());
+    }
+    public static UUID readUUID(ByteBuf buf) {
+        return new UUID(buf.readLong(), buf.readLong());
     }
 }

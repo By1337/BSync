@@ -1,10 +1,8 @@
 package dev.by1337.sync.common.packet;
 
 import dev.by1337.sync.common.packet.impl.*;
-import dev.by1337.sync.common.packet.impl.c2s.C2SHelloPacket;
-import dev.by1337.sync.common.packet.impl.c2s.C2SLoginPacket;
-import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
-import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
+import dev.by1337.sync.common.packet.impl.c2s.*;
+import dev.by1337.sync.common.packet.impl.s2c.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
@@ -20,6 +18,18 @@ public class Packets {
     public static final int RESPONSE_PACKET = 6;
     public static final int PING_PACKET = 7;
     public static final int PONG_PACKET = 8;
+    public static final int S2C_MAIL_ACCEPT_PACKET = 9;
+    public static final int C2S_MAIL_STATUS_PACKET = 10;
+    public static final int C2S_PUSH_MAIL_PACKET = 11;
+    public static final int C2S_POLL_ALL_MAILS_PACKET = 12;
+    public static final int S2C_LOCK_STATUS_REQUEST_PACKET = 13;
+    public static final int C2S_LOCK_STATUS_RESPONSE_PACKET = 14;
+    public static final int S2C_FORCE_UNLOCK_PACKET = 15;
+    public static final int C2S_LOCK_AND_GET_BLOB_PACKET = 16;
+    public static final int S2C_LOCK_STATUS_AND_BLOB_PACKET = 17;
+    public static final int C2S_RELOCK_PACKET = 18;
+    public static final int S2C_LOCK_STATUS_PACKET = 19;
+    public static final int C2S_UNLOCK_AND_FLUSH_BLOB_PACKET = 20;
 
 
     public static Packet read(ByteBuf buf, int protocolVersion) throws DecoderException {
@@ -35,6 +45,18 @@ public class Packets {
             case RESPONSE_PACKET -> new ResponsePacket().readAndGet(buf, protocolVersion);
             case PING_PACKET -> new PingPacket().readAndGet(buf, protocolVersion);
             case PONG_PACKET -> new PongPacket().readAndGet(buf, protocolVersion);
+            case S2C_MAIL_ACCEPT_PACKET -> new S2CMailAcceptPacket().readAndGet(buf, protocolVersion);
+            case C2S_MAIL_STATUS_PACKET -> new C2SMailResponsePacket().readAndGet(buf, protocolVersion);
+            case C2S_PUSH_MAIL_PACKET -> new C2SPushMailPacket().readAndGet(buf, protocolVersion);
+            case C2S_POLL_ALL_MAILS_PACKET -> new C2SPollAllMailsPacket().readAndGet(buf, protocolVersion);
+            case S2C_LOCK_STATUS_REQUEST_PACKET -> new S2CLockStatusRequestPacket().readAndGet(buf, protocolVersion);
+            case C2S_LOCK_STATUS_RESPONSE_PACKET -> new C2SLockStatusResponsePacket().readAndGet(buf, protocolVersion);
+            case S2C_FORCE_UNLOCK_PACKET -> new S2CForceUnlockPacket().readAndGet(buf, protocolVersion);
+            case C2S_LOCK_AND_GET_BLOB_PACKET -> new C2SLockAndGetBlobRequestPacket().readAndGet(buf, protocolVersion);
+            case S2C_LOCK_STATUS_AND_BLOB_PACKET -> new S2CLockStatusAndBlobPacket().readAndGet(buf, protocolVersion);
+            case C2S_RELOCK_PACKET -> new C2SRelockRequestPacket().readAndGet(buf, protocolVersion);
+            case S2C_LOCK_STATUS_PACKET -> new S2CLockStatusPacket().readAndGet(buf, protocolVersion);
+            case C2S_UNLOCK_AND_FLUSH_BLOB_PACKET -> new C2SUnlockAndFlushBlobPacket().readAndGet(buf, protocolVersion);
             default -> throw new DecoderException("Invalid packet id " + id);
         };
     }
