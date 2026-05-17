@@ -18,6 +18,8 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
 public class ClientBootstrap {
     private static final Logger log = LoggerFactory.getLogger(ClientBootstrap.class);
     private static final LazyLoad<EpollEventLoopGroup> epollEventLoopGroup = new LazyLoad<>(() ->

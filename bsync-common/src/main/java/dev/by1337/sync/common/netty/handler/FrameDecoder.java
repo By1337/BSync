@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.TooLongFrameException;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class FrameDecoder extends ByteToMessageDecoder {
@@ -28,7 +29,11 @@ public class FrameDecoder extends ByteToMessageDecoder {
             in.resetReaderIndex();
             return;
         }
-
-        out.add(in.readBytes(length));
+        var v = in.readBytes(length);
+       // byte[] arr = new byte[v.readableBytes()];
+       // v.readBytes(arr);
+       // v.readerIndex(0);
+       // System.out.println(Arrays.toString(arr));
+        out.add(v);
     }
 }

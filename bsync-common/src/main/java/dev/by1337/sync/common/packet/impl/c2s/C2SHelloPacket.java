@@ -1,4 +1,4 @@
-package dev.by1337.sync.common.packet.c2s;
+package dev.by1337.sync.common.packet.impl.c2s;
 
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;

@@ -1,15 +1,13 @@
 package dev.by1337.sync.server.network;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.Iterators;
 import dev.by1337.sync.common.netty.handler.PacketDecoder;
 import dev.by1337.sync.common.netty.handler.PacketEncoder;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
-import dev.by1337.sync.common.packet.c2s.C2SHelloPacket;
-import dev.by1337.sync.common.packet.c2s.C2SLoginPacket;
-import dev.by1337.sync.common.packet.s2c.S2CNoncePacket;
-import dev.by1337.sync.common.packet.s2c.S2CPostLoginPacket;
+import dev.by1337.sync.common.packet.impl.c2s.C2SHelloPacket;
+import dev.by1337.sync.common.packet.impl.c2s.C2SLoginPacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.server.DedicatedServer;
 import io.netty.buffer.ByteBuf;
@@ -25,10 +23,8 @@ import java.security.GeneralSecurityException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Stream;
 
 public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
     private static final Logger log = LoggerFactory.getLogger(LoginPacketListener.class);
@@ -88,7 +84,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
                 pipeline.replace("timeout", "timeout", new ReadTimeoutHandler(120));
                 Connection connection = new Connection(ctx.channel(), server, id, protocolVersion);
                 pipeline.replace("login", "handler", connection);
-                pipeline.addBefore("splitter", "decoder", new PacketDecoder(protocolVersion));
+                pipeline.addAfter("splitter", "decoder", new PacketDecoder(protocolVersion));
                 pipeline.addAfter("prepender", "encoder", new PacketEncoder(protocolVersion));
                 server.clientList().addConnection(connection);
                 connection.send(new S2CPostLoginPacket());

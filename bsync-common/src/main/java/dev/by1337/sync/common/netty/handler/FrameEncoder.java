@@ -6,6 +6,8 @@ import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.TooLongFrameException;
 
+import java.util.Arrays;
+
 public class FrameEncoder extends ChannelOutboundHandlerAdapter {
 
     public void write(ChannelHandlerContext ctx, Object in, ChannelPromise promise) throws Exception {
@@ -18,6 +20,11 @@ public class FrameEncoder extends ChannelOutboundHandlerAdapter {
             var size = ctx.channel().alloc().ioBuffer(4, 4);
             size.writeInt(readableBytes);
             ctx.write(size, ctx.voidPromise());
+          //  int rdx = msg.readerIndex();
+          //  byte[] arr =  new byte[msg.readableBytes()];
+          //  msg.readBytes(arr);
+          //  msg.readerIndex(rdx);
+          //  System.out.println("ENCODE " + Arrays.toString(arr));
             ctx.write(msg, promise);
         } else {
             ctx.write(in, promise);

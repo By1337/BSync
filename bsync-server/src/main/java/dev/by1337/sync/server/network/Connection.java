@@ -1,6 +1,8 @@
 package dev.by1337.sync.server.network;
 
 import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.impl.PingPacket;
+import dev.by1337.sync.common.packet.impl.PongPacket;
 import dev.by1337.sync.server.DedicatedServer;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -29,7 +31,9 @@ public class Connection extends SimpleChannelInboundHandler<Packet> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet msg) throws Exception {
-
+        if (msg instanceof PingPacket p){
+            send(new PongPacket(System.currentTimeMillis()));
+        }
     }
 
     public void send(Packet packet) {

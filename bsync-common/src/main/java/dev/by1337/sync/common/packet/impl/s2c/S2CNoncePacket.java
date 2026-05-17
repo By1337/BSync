@@ -1,4 +1,4 @@
-package dev.by1337.sync.common.packet.s2c;
+package dev.by1337.sync.common.packet.impl.s2c;
 
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;

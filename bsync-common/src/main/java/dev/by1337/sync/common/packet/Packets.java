@@ -1,9 +1,10 @@
 package dev.by1337.sync.common.packet;
 
-import dev.by1337.sync.common.packet.c2s.C2SHelloPacket;
-import dev.by1337.sync.common.packet.c2s.C2SLoginPacket;
-import dev.by1337.sync.common.packet.s2c.S2CNoncePacket;
-import dev.by1337.sync.common.packet.s2c.S2CPostLoginPacket;
+import dev.by1337.sync.common.packet.impl.*;
+import dev.by1337.sync.common.packet.impl.c2s.C2SHelloPacket;
+import dev.by1337.sync.common.packet.impl.c2s.C2SLoginPacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
@@ -14,19 +15,28 @@ public class Packets {
     public static final int S2C_NONCE_PACKET = 1;
     public static final int C2S_LOGIN_PACKET = 2;
     public static final int C2S_POST_LOGIN_PACKET = 3;
+    public static final int CHANNELED_PACKET = 4;
+    public static final int REQUEST_PACKET = 5;
+    public static final int RESPONSE_PACKET = 6;
+    public static final int PING_PACKET = 7;
+    public static final int PONG_PACKET = 8;
 
 
     public static Packet read(ByteBuf buf, int protocolVersion) throws DecoderException {
         if (buf.readableBytes() < 1) throw new DecoderException("Invalid packet length");
         int id = buf.readUnsignedByte();
-        var res = switch (id) {
+        return switch (id) {
             case C2S_HELLO_PACKET -> new C2SHelloPacket().readAndGet(buf, protocolVersion);
             case S2C_NONCE_PACKET -> new S2CNoncePacket().readAndGet(buf, protocolVersion);
             case C2S_LOGIN_PACKET -> new C2SLoginPacket().readAndGet(buf, protocolVersion);
             case C2S_POST_LOGIN_PACKET -> new S2CPostLoginPacket().readAndGet(buf, protocolVersion);
+            case CHANNELED_PACKET -> new ChanneledPacket().readAndGet(buf, protocolVersion);
+            case REQUEST_PACKET -> new RequestPacket().readAndGet(buf, protocolVersion);
+            case RESPONSE_PACKET -> new ResponsePacket().readAndGet(buf, protocolVersion);
+            case PING_PACKET -> new PingPacket().readAndGet(buf, protocolVersion);
+            case PONG_PACKET -> new PongPacket().readAndGet(buf, protocolVersion);
             default -> throw new DecoderException("Invalid packet id " + id);
         };
-        return res;
     }
 
     public static void write(ByteBuf buf, int protocolVersion, Packet packet) {

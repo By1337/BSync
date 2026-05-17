@@ -15,6 +15,7 @@ public class DedicatedServer {
     private volatile boolean running;
     private final CommandManager commandManager;
     private final ClientList clientList;
+    private final long millis;
 
     public DedicatedServer() {
         config = new Config();
@@ -23,7 +24,13 @@ public class DedicatedServer {
         running = true;
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
         commandManager = new CommandManager();
+        millis = System.currentTimeMillis();
     }
+
+    public long startMillis() {
+        return millis;
+    }
+
     public void readTerminal(){
         TerminalReader terminalReader = new TerminalReader(this, commandManager);
         terminalReader.start();

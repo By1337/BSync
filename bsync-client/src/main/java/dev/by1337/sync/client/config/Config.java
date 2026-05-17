@@ -1,13 +1,13 @@
 package dev.by1337.sync.client.config;
 
-import java.util.List;
+import java.util.Map;
 
 public class Config {
     public final String id;
-    public final List<ConnectionConfig> connections;
+    private final Map<String, ConnectionConfig> servers;
 
-    public Config(String id, List<ConnectionConfig> connections) {
+    public Config(String id, Map<String, ConnectionConfig> servers) {
         this.id = id;
-        this.connections = connections;
+        this.servers = servers;
     }
 }

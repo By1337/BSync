@@ -1,13 +1,12 @@
-package dev.by1337.sync.common.packet.s2c;
+package dev.by1337.sync.common.packet.impl;
 
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public final class S2CPostLoginPacket implements Packet {
+public final class PingPacket implements Packet {
 
-
-    public S2CPostLoginPacket() {
+    public PingPacket() {
     }
 
     @Override
@@ -20,6 +19,11 @@ public final class S2CPostLoginPacket implements Packet {
 
     @Override
     public int getId() {
-        return Packets.C2S_POST_LOGIN_PACKET;
+        return Packets.PING_PACKET;
+    }
+
+    @Override
+    public String toString() {
+        return "PingPacket{}";
     }
 }

@@ -1,0 +1,8 @@
+
+id: client-1
+
+servers:
+  - inv_sync:
+      ip: localhost
+      port: 8013
+      key: ./keys/default_key
