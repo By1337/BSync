@@ -6,6 +6,7 @@ import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.channel.handler.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
+import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
@@ -19,6 +20,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     private final EventLoopWorker eventLoop;
     private final Pipeline pipeline;
     private final ChannelType channelType;
+    private volatile boolean registered;
 
     public ClientChannel(Connection connection, String id, EventLoopWorker eventLoop, ChannelType channelType) {
         this.connection = connection;
@@ -40,7 +42,12 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
 
     @Override
     public void write(Packet msg) {
-        connection.send(new ChanneledPacket(id, msg));
+        connection.write(new ChanneledPacket(id, msg));
+    }
+
+    @Override
+    public SocketConnection transport() {
+        return connection;
     }
 
     public void onRegister() {
@@ -65,7 +72,11 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
             public Logger logger() {
                 return self.log;
             }
-        });
+        }, () -> registered = true);
+    }
+
+    public boolean registered() {
+        return registered;
     }
 
     public void onChannelActive() {
@@ -88,4 +99,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         return channelType;
     }
 
+    public EventLoopWorker eventLoop() {
+        return eventLoop;
+    }
 }

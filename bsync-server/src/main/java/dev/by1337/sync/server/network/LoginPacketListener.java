@@ -11,7 +11,6 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.server.DedicatedServer;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
@@ -23,7 +22,6 @@ import java.security.GeneralSecurityException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
 public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
@@ -86,8 +84,8 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
                 pipeline.replace("login", "handler", connection);
                 pipeline.addAfter("splitter", "decoder", new PacketDecoder(protocolVersion));
                 pipeline.addAfter("prepender", "encoder", new PacketEncoder(protocolVersion));
-                server.clientList().addConnection(connection);
-                connection.send(new S2CPostLoginPacket());
+                server.onConnect(connection);
+                connection.write(new S2CPostLoginPacket());
             } else {
                 disconnect(ctx, "Unexpected packet type " + packet + " " + state);
             }

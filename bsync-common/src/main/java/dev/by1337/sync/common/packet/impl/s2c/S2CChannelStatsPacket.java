@@ -34,5 +34,11 @@ public final class S2CChannelStatsPacket implements Packet {
         return Packets.S2C_CHANNEL_STATUS_PACKET;
     }
 
-
+    @Override
+    public String toString() {
+        return "S2CChannelStatsPacket{" +
+                "id='" + id + '\'' +
+                ", opened=" + opened +
+                '}';
+    }
 }

@@ -22,7 +22,7 @@ public final class C2SUnlockAndFlushBlobPacket implements Packet {
     @Override
     public void read(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
-        byte[] blob = new byte[buf.readInt()];
+        blob = new byte[buf.readInt()];
         buf.readBytes(blob);
     }
 
@@ -40,7 +40,7 @@ public final class C2SUnlockAndFlushBlobPacket implements Packet {
 
     @Override
     public String toString() {
-        return "C2SLockAndGetBlobRequestPacket{" +
+        return "C2SUnlockAndFlushBlobPacket{" +
                 "key=" + key +
                 '}';
     }

@@ -23,6 +23,12 @@ public final class C2SMailResponsePacket implements Packet {
         return new C2SMailResponsePacket(Status.ACCEPTED);
     }
 
+    public boolean isAccepted() {
+        return status == Status.ACCEPTED;
+    }
+    public boolean isRejected() {
+        return status == Status.REJECTED;
+    }
 
     @Override
     public void read(ByteBuf buf, int protocolVersion) {

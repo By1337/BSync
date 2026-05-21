@@ -1,5 +1,6 @@
 package dev.by1337.sync.server.network;
 
+import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.PingPacket;
 import dev.by1337.sync.common.packet.impl.PongPacket;
@@ -14,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class Connection extends SimpleChannelInboundHandler<Packet> {
+public class Connection extends SimpleChannelInboundHandler<Packet> implements SocketConnection {
     private static final Logger log = LoggerFactory.getLogger(Connection.class);
     private final Channel channel;
     private final DedicatedServer server;
@@ -32,11 +33,13 @@ public class Connection extends SimpleChannelInboundHandler<Packet> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet msg) throws Exception {
         if (msg instanceof PingPacket p){
-            send(new PongPacket(System.currentTimeMillis()));
+            write(new PongPacket(System.currentTimeMillis()));
+        }else {
+            server.channelManager().onReceive(msg, this);
         }
     }
 
-    public void send(Packet packet) {
+    public void write(Packet packet) {
         channel.write(packet);
         if (flushScheduled.compareAndSet(false, true)) {
             channel.eventLoop().schedule(() -> {
@@ -72,7 +75,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet> {
             ctx.channel().close();
             log.info("Disconnect unauthorized connection {}, reason: {}", ctx.channel().remoteAddress(), message);
         }
-        server.clientList().removeConnection(this);
+        server.onDisconnect(this);
     }
 
     public Channel channel() {

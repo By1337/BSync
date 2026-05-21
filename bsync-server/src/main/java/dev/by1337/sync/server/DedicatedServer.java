@@ -1,9 +1,12 @@
 package dev.by1337.sync.server;
 
+import dev.by1337.sync.common.work.EventLoopWorkers;
+import dev.by1337.sync.server.channel.ChannelManager;
 import dev.by1337.sync.server.config.Config;
 import dev.by1337.sync.server.console.CommandManager;
 import dev.by1337.sync.server.console.TerminalReader;
 import dev.by1337.sync.server.network.ClientList;
+import dev.by1337.sync.server.network.Connection;
 import dev.by1337.sync.server.network.ConnectionListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,11 +19,13 @@ public class DedicatedServer {
     private final CommandManager commandManager;
     private final ClientList clientList;
     private final long millis;
+    private final ChannelManager channelManager;
 
     public DedicatedServer() {
         config = new Config();
         clientList = new ClientList();
         connectionListener = new ConnectionListener(this);
+        channelManager = new ChannelManager(new EventLoopWorkers("server-worker-%d", 4));
         running = true;
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
         commandManager = new CommandManager();
@@ -59,5 +64,18 @@ public class DedicatedServer {
     }
     public ClientList clientList() {
         return clientList;
+    }
+
+    public ChannelManager channelManager() {
+        return channelManager;
+    }
+
+    public void onConnect(Connection connection) {
+        clientList.addConnection(connection);
+    }
+
+    public void onDisconnect(Connection connection) {
+        clientList.removeConnection(connection);
+        channelManager.onDisconnect(connection);
     }
 }

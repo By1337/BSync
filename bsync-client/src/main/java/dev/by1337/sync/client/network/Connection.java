@@ -3,6 +3,7 @@ package dev.by1337.sync.client.network;
 import dev.by1337.sync.client.channel.ClientChannel;
 import dev.by1337.sync.client.config.ConnectionConfig;
 import dev.by1337.sync.common.channel.ChannelType;
+import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.packet.impl.PingPacket;
@@ -22,7 +23,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-public class Connection {
+public class Connection implements SocketConnection {
     private static final ScheduledExecutorService RECONNECT_SHEDULER = new ScheduledThreadPoolExecutor(1);
     private static final Logger log = LoggerFactory.getLogger(Connection.class);
     private final ConnectionConfig config;
@@ -44,7 +45,7 @@ public class Connection {
 
     private void pingTask() {
         if (hasConnection()) {
-            send(new PingPacket());
+            write(new PingPacket());
         }
         //  worker.schedule(this::pingTask, 1500);
     }
@@ -61,7 +62,7 @@ public class Connection {
         }
     }
 
-    public void addChannel(String id, ChannelType channelType, Consumer<ClientChannel> init) {
+    public ClientChannel addChannel(String id, ChannelType channelType, Consumer<ClientChannel> init) {
         if (closed) throw new IllegalStateException("Connection is closed");
         if (channels.containsKey(id)) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
@@ -71,27 +72,36 @@ public class Connection {
         );
         init.accept(channel);
         channels.put(id, channel);
-        send(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+        write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+        return channel;
     }
 
     public void onReceive(Packet packet) {
+        System.out.println("CLIENT IN " + packet);
         if (packet instanceof S2CChannelStatsPacket stats) {
             var channel = channels.get(stats.id);
             if (channel == null) {
                 log.error("No channel with id {} found {}", stats.id, packet);
-                send(new C2SCloseChannelPacket(stats.id));
+                write(new C2SCloseChannelPacket(stats.id));
             } else {
-                channel.onRegister();
+                //пупупу хзхз
+                if (stats.opened) {
+                    channel.onRegister();
+                } else {
+                    channel.onChannelInactive();
+                    log.error("Channel {} has been closed by server. Try to reopen", stats.id);
+                    write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+                }
             }
         } else if (packet instanceof ChanneledPacket c) {
             var channel = channels.get(c.id);
             if (channel == null) {
                 log.error("No channel with id {} found {}", c.id, packet);
             } else {
-                channel.handle(packet);
+                channel.handle(c.payload);
             }
         } else if (packet instanceof PingPacket) {
-            send(new PongPacket(System.currentTimeMillis()));
+            write(new PongPacket(System.currentTimeMillis()));
         } else if (packet instanceof PongPacket p) {
             ping = System.currentTimeMillis() - p.timestamp;
             // log.info("ping {}", ping);
@@ -127,7 +137,8 @@ public class Connection {
         }
     }
 
-    public void send(Packet packet) {
+    @Override
+    public void write(Packet packet) {
         var conn = connection;
         if (conn != null && conn.connected()) {
             conn.send(packet);

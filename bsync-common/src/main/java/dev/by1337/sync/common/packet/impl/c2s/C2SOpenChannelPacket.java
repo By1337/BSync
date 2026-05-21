@@ -37,5 +37,11 @@ public final class C2SOpenChannelPacket implements Packet {
         return Packets.C2S_OPEN_CHANNEL_PACKET;
     }
 
-
+    @Override
+    public String toString() {
+        return "C2SOpenChannelPacket{" +
+                "id='" + id + '\'' +
+                ", channelType=" + channelType +
+                '}';
+    }
 }

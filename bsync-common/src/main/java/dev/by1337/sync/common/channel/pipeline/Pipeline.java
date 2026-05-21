@@ -22,18 +22,22 @@ public class Pipeline {
 
 
     public void handle(ChannelMessage msg, Connection out) {
-        if (!mailbox.offer(new PipelineTask(msg, out))) {
-            log.error("Mailbox queue full! DROP TASK {}", msg, new Throwable());
-        } else {
-            scheduleDrain();
-        }
+        eventLoop.execute(() -> {
+            handle0(msg, 0, out);
+        });
+       // if (!mailbox.offer(new PipelineTask(msg, out))) {
+       //     log.error("Mailbox queue full! DROP TASK {}", msg, new Throwable());
+       // } else {
+       //     scheduleDrain();
+       // }
     }
 
-    public void registerAll(ChannelRuntime runtime){
+    public void registerAll(ChannelRuntime runtime, Runnable task) {
         eventLoop.execute(() -> {
             for (Entry handler : handlers) {
                 handler.handler.init(runtime);
             }
+            task.run();
         });
     }
     public void closeAll(){

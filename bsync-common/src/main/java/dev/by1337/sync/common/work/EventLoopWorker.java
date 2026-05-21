@@ -7,12 +7,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.PriorityQueue;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
 public final class EventLoopWorker {
     private static final Logger log = LoggerFactory.getLogger(EventLoopWorker.class);
-    private final MpscArrayQueue<Runnable> queue = new MpscArrayQueue<>(4096);
+   private final MpscArrayQueue<Runnable> queue = new MpscArrayQueue<>(4096);
+  //  private final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
     private final PriorityQueue<ScheduledTask> scheduled = new PriorityQueue<>(256);
     private final Thread thread;
 
@@ -22,14 +25,11 @@ public final class EventLoopWorker {
     }
 
     public void execute(Runnable runnable) {
-        if (isWorkerThread()) {
-            runnable.run();
-        } else {
-            if (!queue.add(runnable)) {
-                log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
-            }
-            LockSupport.unpark(thread);
+     //   System.out.println("offer " + runnable);
+        if (!queue.offer(runnable)) {
+            log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
         }
+        LockSupport.unpark(thread);
     }
 
     public void schedule(Runnable runnable, long ms) {
@@ -71,6 +71,7 @@ public final class EventLoopWorker {
     private void runTasks(Supplier<? extends @Nullable Runnable> queue) {
         Runnable task;
         while ((task = queue.get()) != null) {
+           // System.out.println("run " + task);
             try {
                 task.run();
             } catch (Throwable t) {
