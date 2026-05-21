@@ -16,6 +16,11 @@ public final class S2CLockStatusAndBlobPacket implements Packet {
     public S2CLockStatusAndBlobPacket() {
     }
 
+    public S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob) {
+        this.status = status;
+        this.blob = blob;
+    }
+
     public boolean isAccepted() {
         return status == Status.ACCEPTED;
     }

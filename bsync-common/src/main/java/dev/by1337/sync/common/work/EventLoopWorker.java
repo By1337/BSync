@@ -1,4 +1,4 @@
-package dev.by1337.sync.client.work;
+package dev.by1337.sync.common.work;
 
 import io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue;
 import org.jetbrains.annotations.NotNull;
@@ -10,13 +10,13 @@ import java.util.PriorityQueue;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
-public final class ConnectionWorker {
-    private static final Logger log = LoggerFactory.getLogger(ConnectionWorker.class);
+public final class EventLoopWorker {
+    private static final Logger log = LoggerFactory.getLogger(EventLoopWorker.class);
     private final MpscArrayQueue<Runnable> queue = new MpscArrayQueue<>(4096);
     private final PriorityQueue<ScheduledTask> scheduled = new PriorityQueue<>(256);
     private final Thread thread;
 
-    public ConnectionWorker(String name) {
+    public EventLoopWorker(String name) {
         this.thread = new Thread(this::runLoop, name);
         this.thread.start();
     }
@@ -26,7 +26,7 @@ public final class ConnectionWorker {
             runnable.run();
         } else {
             if (!queue.add(runnable)) {
-                log.warn("Failed to add runnable to queue", new Throwable());
+                log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
             }
             LockSupport.unpark(thread);
         }
@@ -102,7 +102,7 @@ public final class ConnectionWorker {
         }
 
         @Override
-        public int compareTo(@NotNull ConnectionWorker.ScheduledTask o) {
+        public int compareTo(@NotNull EventLoopWorker.ScheduledTask o) {
             return Long.compare(executeAt, o.executeAt);
         }
     }
