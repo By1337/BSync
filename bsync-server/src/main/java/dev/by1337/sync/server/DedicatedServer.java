@@ -23,7 +23,13 @@ public class DedicatedServer {
     private Thread terminalThread;
 
     public DedicatedServer() {
+        this(-1);
+    }
+    public DedicatedServer(int testPort) {
         config = new Config();
+        if (testPort != -1){
+            config.tcp_port = testPort;
+        }
         clientList = new ClientList();
         connectionListener = new ConnectionListener(this);
         channelManager = new ChannelManager(new EventLoopWorkers("server-worker-%d", 4));

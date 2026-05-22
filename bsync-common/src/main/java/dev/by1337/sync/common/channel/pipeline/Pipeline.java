@@ -1,9 +1,7 @@
 package dev.by1337.sync.common.channel.pipeline;
 
 import dev.by1337.sync.common.channel.ChannelMessage;
-import dev.by1337.sync.common.util.SingleSemaphore;
 import dev.by1337.sync.common.work.EventLoopWorker;
-import io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,8 +12,6 @@ public class Pipeline {
     private static final Logger log = LoggerFactory.getLogger(Pipeline.class);
     private Entry[] handlers = new Entry[0];
     private final EventLoopWorker eventLoop;
-    private final MpscArrayQueue<PipelineTask> mailbox = new MpscArrayQueue<>(4096);
-    private final SingleSemaphore draining = new SingleSemaphore();
 
     public Pipeline(EventLoopWorker eventLoop) {
         this.eventLoop = eventLoop;
@@ -24,18 +20,25 @@ public class Pipeline {
 
     public void schedule(ChannelMessage msg, Connection out, long ms) {
         eventLoop.schedule(() -> {
-            handle0(msg, 0, out);
+            execute0(msg, 0, out);
         }, ms);
     }
-    public void handle(ChannelMessage msg, Connection out) {
+
+    public void execute(ChannelMessage msg, Connection out) {
         eventLoop.execute(() -> {
-            handle0(msg, 0, out);
+            execute0(msg, 0, out);
         });
-       // if (!mailbox.offer(new PipelineTask(msg, out))) {
-       //     log.error("Mailbox queue full! DROP TASK {}", msg, new Throwable());
-       // } else {
-       //     scheduleDrain();
-       // }
+    }
+
+    private void execute0(ChannelMessage msg, int idx, Connection connection) {
+        if (idx >= handlers.length) {
+            if (!(msg instanceof ChannelMessage.UnhandledIgnored))
+                log.warn("unprocessed message {}", msg);
+            return;
+        }
+        try (var ctx = new ChannelContextImpl(connection, idx, this)) {
+            handlers[idx].handler.handle(ctx, msg);
+        }
     }
 
     public void registerAll(ChannelRuntime runtime, Runnable task) {
@@ -46,57 +49,19 @@ public class Pipeline {
             task.run();
         });
     }
-    public CompletableFuture<Void> closeAll(){
+
+    public CompletableFuture<Void> closeAll() {
         CompletableFuture<Void> future = new CompletableFuture<>();
         eventLoop.execute(() -> {
             try {
                 for (Entry handler : handlers) {
                     handler.handler.close();
                 }
-            }finally {
+            } finally {
                 future.complete(null);
             }
         });
         return future;
-    }
-
-    private void scheduleDrain() {
-        if (!draining.tryAcquire()) return;
-
-        eventLoop.execute(() -> {
-            try {
-                drainMails();
-            } finally {
-                draining.release();
-
-                if (!mailbox.isEmpty()) {
-                    scheduleDrain();
-                }
-            }
-        });
-    }
-
-    private void drainMails() {
-        eventLoop.assertThread();
-        PipelineTask msg;
-        while ((msg = mailbox.poll()) != null) {
-            try {
-                handle0(msg.message(), 0, msg.connection);
-            } catch (Exception e) {
-                log.error("Failed to handle message {}", msg, e);
-            }
-        }
-    }
-
-    private void handle0(ChannelMessage msg, int idx, Connection connection) {
-        if (idx >= handlers.length) {
-            if (!(msg instanceof ChannelMessage.UnhandledIgnored))
-                log.warn("unprocessed message {}", msg);
-            return;
-        }
-        try (var ctx = new ChannelContextImpl(connection, idx, this)) {
-            handlers[idx].handler.handle(ctx, msg);
-        }
     }
 
     private static class ChannelContextImpl implements ChannelContext, AutoCloseable {
@@ -114,7 +79,7 @@ public class Pipeline {
         @Override
         public void fire(ChannelMessage msg) {
             if (closed) throw new IllegalStateException("closed");
-            pipeline.handle0(msg, idx + 1, connection);
+            pipeline.execute0(msg, idx + 1, connection);
         }
 
         @Override

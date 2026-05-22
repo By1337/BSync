@@ -6,6 +6,7 @@ import dev.by1337.sync.common.channel.pipeline.ChannelContext;
 import dev.by1337.sync.common.channel.pipeline.ChannelHandler;
 import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
 import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.ExpectsResponse;
 import dev.by1337.sync.common.packet.impl.RequestPacket;
 import dev.by1337.sync.common.packet.impl.ResponsePacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
@@ -35,21 +36,31 @@ public class RequestsHandler implements ChannelHandler {
 
     @Override
     public void handle(ChannelContext ctx, ChannelMessage msg) {
-        if (msg instanceof RequestMsg r) {
+        if (msg instanceof RequestMsg<?> r) {
             ctx.connection().write(new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet()));
             requestsTimeOuter();
         } else if (msg instanceof ResponsePacket r) {
             var v = requests.remove(r.uid);
             if (v != null) {
+                // noinspection unchecked
+                PacketCallback<Packet> callback = (PacketCallback<Packet>) v.callback;
                 try {
-                    v.callback.accept(r.payload, ctx.connection());
+                    callback.accept(r.payload, ctx.connection());
+                } catch (ClassCastException e) {
+                    log.error("Bad response type", e);
+                    try {
+                        callback.accept(null, ctx.connection());
+                    } catch (Exception e1) {
+                        log.error("Failed to accept response", e1);
+                    }
                 } catch (Exception e) {
                     log.error("Failed to accept response", e);
                 }
             }
         } else if (msg instanceof RequestPacket r) {
-            ctx.pipeline().handle(
-                    new IncomingRequest(r.payload, result -> ctx.connection().write(new ResponsePacket(r.uid, result))),
+            ctx.pipeline().execute(
+                    new IncomingRequest(r.payload,
+                            result -> ctx.connection().write(new ResponsePacket(r.uid, result))),
                     ctx.connection()
             );
         } else {
@@ -70,7 +81,7 @@ public class RequestsHandler implements ChannelHandler {
         requests.clear();
     }
 
-    private RequestHolder newRequest(PacketCallback consumer, long timeoutMs) {
+    private RequestHolder newRequest(PacketCallback<?> consumer, long timeoutMs) {
         var id = requestId++;
         var v = new RequestHolder(id, System.currentTimeMillis() + timeoutMs, consumer);
         requests.put(id, v);
@@ -78,8 +89,8 @@ public class RequestsHandler implements ChannelHandler {
         return v;
     }
 
-    public static RequestMsg request(Packet packet, PacketCallback consumer, long timeoutMs) {
-        return new RequestMsg(packet, consumer, timeoutMs);
+    public static <E extends Packet, T extends ExpectsResponse<E> & Packet> RequestMsg<E> request(T packet, PacketCallback<E> consumer, long timeoutMs) {
+        return new RequestMsg<>(packet, consumer, timeoutMs);
     }
 
     private void requestsTimeOuter() {
@@ -109,9 +120,9 @@ public class RequestsHandler implements ChannelHandler {
     public static class RequestHolder implements Comparable<RequestHolder> {
         private final int id;
         private final long timeoutAt;
-        private final PacketCallback callback;
+        private final PacketCallback<?> callback;
 
-        public RequestHolder(int id, long timeoutAt, PacketCallback callback) {
+        public RequestHolder(int id, long timeoutAt, PacketCallback<?> callback) {
             this.id = id;
             this.timeoutAt = timeoutAt;
             this.callback = callback;

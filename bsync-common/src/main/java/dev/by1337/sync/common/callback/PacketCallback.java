@@ -7,6 +7,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.Consumer;
 
 @FunctionalInterface
-public interface PacketCallback {
-    void accept(@Nullable Packet packet, Connection connection);
+public interface PacketCallback<T extends Packet> {
+    void accept(@Nullable T packet, Connection connection);
 }

@@ -5,22 +5,22 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
-public final class S2CLockStatusPacket implements Packet {
+public final class S2CLockStatusResponsePacket implements Packet {
 
     public Status status;
 
-    public S2CLockStatusPacket(Status status) {
+    public S2CLockStatusResponsePacket(Status status) {
         this.status = status;
     }
 
-    public S2CLockStatusPacket() {
+    public S2CLockStatusResponsePacket() {
     }
 
-    public static S2CLockStatusPacket reject() {
-        return new S2CLockStatusPacket(Status.REJECTED);
+    public static S2CLockStatusResponsePacket reject() {
+        return new S2CLockStatusResponsePacket(Status.REJECTED);
     }
-    public static S2CLockStatusPacket owned() {
-        return new S2CLockStatusPacket(Status.OWNED);
+    public static S2CLockStatusResponsePacket owned() {
+        return new S2CLockStatusResponsePacket(Status.OWNED);
     }
     public boolean isRejected() {
         return status == Status.REJECTED;

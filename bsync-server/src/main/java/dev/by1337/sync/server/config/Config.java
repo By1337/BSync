@@ -16,7 +16,7 @@ public class Config {
 
     private static final Logger log = LoggerFactory.getLogger(Config.class);
     private List<PublicKey> authorized_keys;
-    public final int tcp_port = 8013;
+    public int tcp_port = 8013;
 
 
     public Config() {

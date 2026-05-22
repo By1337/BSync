@@ -39,7 +39,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     }
 
     public void handle(Packet packet) {
-        pipeline.handle(packet, this);
+        pipeline.execute(packet, this);
     }
 
     @Override
@@ -82,11 +82,11 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     }
 
     public void onChannelActive() {
-        pipeline.handle(ChannelActiveMessage.INSTANCE, this);
+        pipeline.execute(ChannelActiveMessage.INSTANCE, this);
     }
 
     public void onChannelInactive() {
-        pipeline.handle(ChannelInactiveMessage.INSTANCE, this);
+        pipeline.execute(ChannelInactiveMessage.INSTANCE, this);
     }
 
     public CompletableFuture<Void> close() {

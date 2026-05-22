@@ -6,9 +6,7 @@ import dev.by1337.sync.common.channel.handler.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.*;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.c2s.*;
-import dev.by1337.sync.common.packet.impl.s2c.S2CLockStatusAndBlobPacket;
-import dev.by1337.sync.common.packet.impl.s2c.S2CLockStatusPacket;
-import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
+import dev.by1337.sync.common.packet.impl.s2c.*;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.channel.ServerChannelRuntime;
 import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
@@ -28,6 +26,7 @@ public class ServerLockHandler implements ChannelHandler {
     private EventLoopWorker eventLoop;
     private Pipeline pipeline;
     private ServerChannelRuntime serverChannel;
+    private boolean closed = false;
 
     @Override
     public void init(ChannelRuntime runtime) {
@@ -40,6 +39,20 @@ public class ServerLockHandler implements ChannelHandler {
         this.log = runtime.logger();
         pipeline = runtime.pipeline();
         serverChannel = runtime1;
+        eventLoop.schedule(this::tick, 10_000);
+    }
+
+    private void tick() {
+        long now = System.currentTimeMillis();
+        for (var lock : List.copyOf(lockMap.key2lock.values())) {
+            if (lock.lastConfirm + LockMap.OUTDATE_TIME_MS < now) {
+                lockMap.unlock(lock.key);
+                serverChannel.lookup(lock.owner).write(new S2CForceUnlockPacket(lock.key));
+            } else if (lock.lastConfirm + 10_000 < now) {
+                ensureLockOwnership(lock.key);
+            }
+        }
+        eventLoop.schedule(this::tick, 15_000);
     }
 
     @Override
@@ -52,24 +65,30 @@ public class ServerLockHandler implements ChannelHandler {
             ctx.fire(msg);
         } else if (msg instanceof IncomingRequest request) {
             ChannelMessage payload = request.payload();
-            Consumer<Packet> out = request.out();
             if (payload instanceof C2SLockAndGetBlobRequestPacket r) {
                 var lock = lockMap.tryLock(r.key, ctx.connection().transport());
                 if (lock == null) {
                     if (++request.counter >= 10) {
-                        out.accept(new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.REJECTED, null));
+                        request.response(r, new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.REJECTED, null));
                     } else {
                         pipeline.schedule(msg, ctx.connection(), 500);
                     }
                 } else {
-                    out.accept(new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, database.get(r.key)));
+                    request.response(r, new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, database.get(r.key)));
+                    ensureLockOwnership(r.key);
                 }
             } else if (payload instanceof C2SRelockRequestPacket relock) {
                 var lock = lockMap.tryLock(relock.key, ctx.connection().transport());
                 if (lock == null) {
-                    out.accept(S2CLockStatusPacket.reject());
+                    request.response(relock, S2CLockStatusResponsePacket.reject());
                 } else {
-                    out.accept(S2CLockStatusPacket.owned());
+                    request.response(relock, S2CLockStatusResponsePacket.owned());
+                }
+            } else if (payload instanceof C2SLockStatusReqestPacket s) {
+                if (lockMap.isOwner(s.key, ctx.connection().transport())) {
+                    request.response(s, S2CLockStatusResponsePacket.owned());
+                } else {
+                    request.response(s, S2CLockStatusResponsePacket.reject());
                 }
             } else {
                 ctx.fire(msg);
@@ -90,19 +109,43 @@ public class ServerLockHandler implements ChannelHandler {
         } else if (msg instanceof C2SUnlockAndFlushBlobPacket flush) {
             var lock = lockMap.getLock(flush.key);
             if (lock == null || lock.owner != ctx.connection().transport()) {
-                log.error("Клиент {} пишет в {} без блокировки! DATA LOST {}", ctx.connection().transport(), flush.key, Base64.getEncoder().encodeToString(flush.blob));
+                log.error("Клиент {} пишет в {} без блокировки! DATA LOST {}", ctx.connection().transport(), flush.key, arrayToBase64(flush.blob));
                 return;
             }
             database.put(flush.key, flush.blob);
             lockMap.unlock(flush.key);
+        } else if (msg instanceof C2SUnlockPacket unlock) {
+            lockMap.unlockIfOwner(unlock.key, ctx.connection().transport());
+        } else {
+            ctx.fire(msg);
         }
+    }
+
+    private void ensureLockOwnership(UUID key) {
+        var lock0 = lockMap.getLock(key);
+        if (lock0 == null) return;
+        var connection = serverChannel.lookup(lock0.owner);
+        pipeline.execute(RequestsHandler.request(new S2CLockStatusRequestPacket(key), (status, conn) -> {
+            if (status != null) {
+                if (status.isLocked()) {
+                    if (lockMap.tryLock(key, conn.transport()) == null) {
+                        conn.write(new S2CForceUnlockPacket(key));
+                    }
+                } else {
+                    lockMap.unlockIfOwner(key, conn.transport());
+                }
+            } else {
+                lockMap.unlockIfOwner(key, conn.transport());
+                log.error("Bad response for S2CLockStatusRequestPacket {} {}", status, conn);
+            }
+        }, 10_000), connection);
     }
 
     private void sendMail(Connection connection, UUID key) {
         var map = this.mails.get(key);
         if (map == null || map.isEmpty()) return;
         var mail = map.firstEntry();
-        pipeline.handle(RequestsHandler.request(new S2CMailAcceptPacket(key, mail.getValue()), (result, conn) -> {
+        pipeline.execute(RequestsHandler.request(new S2CMailAcceptPacket(key, mail.getValue()), (result, conn) -> {
             if (result instanceof C2SMailResponsePacket response) {
                 if (!lockMap.isOwner(key, conn.transport())) {
                     log.error("Клиент {} принял mail без блокировки! {} {}", conn.transport(), mail, response);
@@ -129,17 +172,19 @@ public class ServerLockHandler implements ChannelHandler {
 
     @Override
     public void close() {
-
+        closed = true;
     }
 
     public static class LockData {
+        public int version;
         public final UUID key;
         public final SocketConnection owner;
         public long lastConfirm;
 
-        public LockData(UUID key, SocketConnection owner) {
+        public LockData(UUID key, SocketConnection owner, int version) {
             this.key = key;
             this.owner = owner;
+            this.version = version;
         }
     }
 
@@ -170,6 +215,14 @@ public class ServerLockHandler implements ChannelHandler {
             return Collections.unmodifiableSet(set);
         }
 
+        public void unlockIfOwner(UUID key, SocketConnection c) {
+            var lock = key2lock.get(key);
+            if (lock == null) return;
+            if (lock.owner == c) {
+                unlock(key);
+            }
+        }
+
         public @Nullable LockData unlock(UUID key) {
             var lock = key2lock.remove(key);
             if (lock == null) return null;
@@ -188,7 +241,7 @@ public class ServerLockHandler implements ChannelHandler {
                 }
                 return null;
             }
-            LockData lock = new LockData(key, c);
+            LockData lock = new LockData(key, c, 0);
             lock.lastConfirm = System.currentTimeMillis();
             key2lock.put(key, lock);
             key2client.put(key, c);
@@ -196,5 +249,9 @@ public class ServerLockHandler implements ChannelHandler {
             return lock;
         }
 
+    }
+
+    private String arrayToBase64(byte[] arr) {
+        return arr == null ? "null" : Base64.getEncoder().encodeToString(arr);
     }
 }

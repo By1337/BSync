@@ -3,20 +3,19 @@ package dev.by1337.sync.common.packet.impl.c2s;
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
-import dev.by1337.sync.common.packet.ExpectsResponse;
-import dev.by1337.sync.common.packet.impl.s2c.S2CLockStatusAndBlobPacket;
 import io.netty.buffer.ByteBuf;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-public final class C2SLockAndGetBlobRequestPacket implements Packet, ExpectsResponse<S2CLockStatusAndBlobPacket> {
+public final class C2SUnlockPacket implements Packet {
     public UUID key;
 
-    public C2SLockAndGetBlobRequestPacket() {
+    public C2SUnlockPacket(UUID key) {
+        this.key = key;
     }
 
-    public C2SLockAndGetBlobRequestPacket(UUID key) {
-        this.key = key;
+    public C2SUnlockPacket() {
     }
 
     @Override
@@ -31,12 +30,12 @@ public final class C2SLockAndGetBlobRequestPacket implements Packet, ExpectsResp
 
     @Override
     public int getId() {
-        return Packets.C2S_LOCK_AND_GET_BLOB_PACKET;
+        return Packets.C2S_UNLOCK_PACKET;
     }
 
     @Override
     public String toString() {
-        return "C2SLockAndGetBlobRequestPacket{" +
+        return "C2SUnlockPacket{" +
                 "key=" + key +
                 '}';
     }

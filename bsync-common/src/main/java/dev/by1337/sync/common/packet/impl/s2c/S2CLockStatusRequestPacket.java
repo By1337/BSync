@@ -3,11 +3,13 @@ package dev.by1337.sync.common.packet.impl.s2c;
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
+import dev.by1337.sync.common.packet.ExpectsResponse;
+import dev.by1337.sync.common.packet.impl.c2s.C2SLockStatusResponsePacket;
 import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public final class S2CLockStatusRequestPacket implements Packet {
+public final class S2CLockStatusRequestPacket implements Packet, ExpectsResponse<C2SLockStatusResponsePacket> {
     public UUID key;
 
     public S2CLockStatusRequestPacket(UUID key) {

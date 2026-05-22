@@ -82,9 +82,9 @@ public class BSync extends JavaPlugin {
 
     @Override
     public void onEnable() {
-     //   getConnection("example").addChannel("test-inv", ChannelType.DATA_CHANNEL, channel -> {
-     //       channel.pipeline().addLast("invs", new TestInvSyncHandler(this));
-     //   });
+        getConnection("example").addChannel("test-inv", ChannelType.DATA_CHANNEL, channel -> {
+            channel.pipeline().addLast("invs", new TestInvSyncHandler(this));
+        });
         //Player pl;
         //pl.getInventory().clear();
     }

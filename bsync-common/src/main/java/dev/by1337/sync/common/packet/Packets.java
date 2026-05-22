@@ -33,6 +33,8 @@ public class Packets {
     public static final int C2S_OPEN_CHANNEL_PACKET = 21;
     public static final int C2S_CLOSE_CHANNEL_PACKET = 22;
     public static final int S2C_CHANNEL_STATUS_PACKET = 23;
+    public static final int C2S_UNLOCK_PACKET = 24;
+    public static final int C2S_LOCK_STATUS_REQUEST_PACKET = 25;
 
 
     public static Packet read(ByteBuf buf, int protocolVersion) throws DecoderException {
@@ -58,11 +60,13 @@ public class Packets {
             case C2S_LOCK_AND_GET_BLOB_PACKET -> new C2SLockAndGetBlobRequestPacket().readAndGet(buf, protocolVersion);
             case S2C_LOCK_STATUS_AND_BLOB_PACKET -> new S2CLockStatusAndBlobPacket().readAndGet(buf, protocolVersion);
             case C2S_RELOCK_PACKET -> new C2SRelockRequestPacket().readAndGet(buf, protocolVersion);
-            case S2C_LOCK_STATUS_PACKET -> new S2CLockStatusPacket().readAndGet(buf, protocolVersion);
+            case S2C_LOCK_STATUS_PACKET -> new S2CLockStatusResponsePacket().readAndGet(buf, protocolVersion);
             case C2S_UNLOCK_AND_FLUSH_BLOB_PACKET -> new C2SUnlockAndFlushBlobPacket().readAndGet(buf, protocolVersion);
             case C2S_OPEN_CHANNEL_PACKET -> new C2SOpenChannelPacket().readAndGet(buf, protocolVersion);
             case C2S_CLOSE_CHANNEL_PACKET -> new C2SCloseChannelPacket().readAndGet(buf, protocolVersion);
             case S2C_CHANNEL_STATUS_PACKET -> new S2CChannelStatsPacket().readAndGet(buf, protocolVersion);
+            case C2S_UNLOCK_PACKET -> new C2SUnlockPacket().readAndGet(buf, protocolVersion);
+            case C2S_LOCK_STATUS_REQUEST_PACKET -> new C2SLockStatusReqestPacket().readAndGet(buf, protocolVersion);
             default -> throw new DecoderException("Invalid packet id " + id);
         };
     }

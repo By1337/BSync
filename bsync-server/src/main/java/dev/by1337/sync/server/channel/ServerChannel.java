@@ -2,7 +2,6 @@ package dev.by1337.sync.server.channel;
 
 import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.RequestsHandler;
-import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
@@ -31,7 +30,7 @@ public class ServerChannel {
     }
 
     public void handle(ChannelMessage packet, Connection connection) {
-        pipeline.handle(packet, lookup(connection));
+        pipeline.execute(packet, lookup(connection));
     }
 
     private dev.by1337.sync.common.channel.pipeline.Connection lookup(SocketConnection connection) {

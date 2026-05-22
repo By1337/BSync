@@ -18,7 +18,7 @@ public class DedicatedServerTest {
 
     @Test
     public void run() throws Exception {
-        var server = new DedicatedServer();
+        var server = new DedicatedServer(8014);
         EventLoopWorkers workers = new EventLoopWorkers("test-worker-%d", 1);
         Connection connection = new Connection(
                 new ConnectionConfig(
@@ -39,22 +39,25 @@ public class DedicatedServerTest {
         });
         while (!channel.registered()) {
         }
+        System.out.println("done");
+
+        var key = new UUID(13, 37);
        // CountDownLatch task = new CountDownLatch(1);
         SingleSemaphore task = new SingleSemaphore();
-        locks.lockAndLoadData(new UUID(13, 37), (status, arr) -> {
-            System.out.println(status);
-            System.out.println(Arrays.toString(arr));
-            locks.unlock(new UUID(13, 37), new byte[]{13, 37});
-            locks.lockAndLoadData(new UUID(13, 37), (status1, arr1) -> {
-                System.out.println(status1);
-                System.out.println(Arrays.toString(arr1));
-                task.release();
-            });
+        task.tryAcquire();
+        locks.lockAndLoadData(key, (s, a) -> {
+            System.out.println("OLD " + s);
         });
-        System.out.println("done");
+        locks.unlock(key, null);
+        locks.lockAndLoadData(key, (s, a) -> {
+            System.out.println("NEW " + s);
+            task.release();
+        });
+
+
         while (!task.tryAcquire()){
         }
-        // Thread.sleep(9999);
+         Thread.sleep(9999);
     }
 
     private static class TestClientLocks extends ClientLocksHandler {
