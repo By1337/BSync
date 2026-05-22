@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +29,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     private final String id;
     public final ConnectionConfig connectionConfig;
     private final ClientBootstrap bootstrap;
-    private volatile boolean connected;
+    private volatile boolean authorized;
     private final Connection manager;
     private final AtomicBoolean flushScheduled = new AtomicBoolean();
     private Channel channel;
@@ -46,7 +45,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     public void connect() {
         bootstrap.connect(connectionConfig.ip, connectionConfig.port).addListener((ChannelFutureListener) future -> {
             if (!future.isSuccess()) {
-                connected = false;
+                authorized = false;
                 manager.onClosed(this);
             } else {
                 channel = future.channel();
@@ -58,9 +57,13 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet msg) throws Exception {
-        if (!connected) {
+        if (!authorized) {
             if (msg instanceof S2CNoncePacket noncePacket) {
-                PrivateKey key = Ed25519.privateKeyFromBase64(Files.readString(Path.of(connectionConfig.keyPath)));
+                if (!connectionConfig.keyPath.exists()){
+                    disconnect(ctx, "Key not found " + connectionConfig.keyPath);
+                    return;
+                }
+                PrivateKey key = Ed25519.privateKeyFromBase64(Files.readString(connectionConfig.keyPath.toPath()));
                 var nonce = noncePacket.nonce;
                 var idBytes = id.getBytes(StandardCharsets.UTF_8);
                 byte[] payload = Arrays.copyOf(idBytes, idBytes.length + nonce.length);
@@ -68,7 +71,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
                 byte[] signature = Ed25519.sign(key, payload);
                 channel.writeAndFlush(new C2SLoginPacket(signature));
             } else if (msg instanceof S2CPostLoginPacket) {
-                connected = true;
+                authorized = true;
                 manager.postLogin(this);
             }
         } else {
@@ -86,8 +89,8 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         }
     }
 
-    public boolean connected() {
-        return connected && channel.isActive();
+    public boolean authorized() {
+        return authorized && channel.isActive();
     }
 
     @Override
@@ -112,20 +115,25 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     }
 
     private void disconnect(ChannelHandlerContext ctx, String message) {
-        if (!connected) return;
-        connected = false;
+        if (!authorized){
+            if (ctx.channel().isOpen()) {
+                ctx.channel().close();
+                log.info("Disconnect unauthorized connection {}, reason: {}", ctx.channel().remoteAddress(), message);
+            }
+        }
+        authorized = false;
         manager.onClosed(this);
         if (ctx.channel().isOpen()) {
             ctx.channel().close();
-            log.info("Disconnect unauthorized connection {}, reason: {}", ctx.channel().remoteAddress(), message);
         }
     }
 
     public void close() {
-        if (channel != null) {
-            channel.eventLoop().submit(() -> {
-                channel.flush();
-                channel.close();
+        var c = channel;
+        if (c != null) {
+            c.eventLoop().submit(() -> {
+                c.flush();
+                c.close();
             });
         }
     }

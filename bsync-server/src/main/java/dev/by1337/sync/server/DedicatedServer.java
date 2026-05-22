@@ -20,6 +20,7 @@ public class DedicatedServer {
     private final ClientList clientList;
     private final long millis;
     private final ChannelManager channelManager;
+    private Thread terminalThread;
 
     public DedicatedServer() {
         config = new Config();
@@ -37,6 +38,8 @@ public class DedicatedServer {
     }
 
     public void readTerminal(){
+        if (terminalThread != null) throw new IllegalStateException("Terminal thread has already been started");
+        terminalThread = Thread.currentThread();
         TerminalReader terminalReader = new TerminalReader(this, commandManager);
         terminalReader.start();
     }
@@ -49,6 +52,7 @@ public class DedicatedServer {
         if (!running) return;
         running = false;
         connectionListener.stop();
+        terminalThread.interrupt();
     }
 
     public Config config() {

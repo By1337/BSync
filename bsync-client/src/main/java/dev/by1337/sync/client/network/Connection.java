@@ -11,6 +11,7 @@ import dev.by1337.sync.common.packet.impl.PongPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
+import dev.by1337.sync.common.util.SingleSemaphore;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,7 @@ public class Connection implements SocketConnection {
     private ConnectionHandler connection;
     private final Map<String, ClientChannel> channels = new ConcurrentHashMap<>();
     private long ping = 0;
+    private final SingleSemaphore reconnectSemaphore = new SingleSemaphore();
 
     public Connection(ConnectionConfig config, EventLoopWorkers workers, String id, ClientBootstrap bootstrap) {
         this.config = config;
@@ -68,7 +70,7 @@ public class Connection implements SocketConnection {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
         ClientChannel channel = new ClientChannel(
-                this, id, workers.getRandom(), channelType
+                this, id, workers.getNext(), channelType
         );
         init.accept(channel);
         channels.put(id, channel);
@@ -77,7 +79,7 @@ public class Connection implements SocketConnection {
     }
 
     public void onReceive(Packet packet) {
-        System.out.println("CLIENT IN " + packet);
+       // System.out.println("CLIENT IN " + packet);
         if (packet instanceof S2CChannelStatsPacket stats) {
             var channel = channels.get(stats.id);
             if (channel == null) {
@@ -119,11 +121,14 @@ public class Connection implements SocketConnection {
             channel.onChannelInactive();
         }
         log.error("Connection closed {}:{}", config.ip, config.port);
-        RECONNECT_SHEDULER.schedule(() -> {
-            log.info("Reconnecting {}:{}", config.ip, config.port);
-            this.connection = new ConnectionHandler(id, config, bootstrap, this);
-            this.connection.connect();
-        }, 2, TimeUnit.SECONDS);
+        if (reconnectSemaphore.tryAcquire()) {
+            RECONNECT_SHEDULER.schedule(() -> {
+                reconnectSemaphore.release();
+                log.info("Reconnecting {}:{}", config.ip, config.port);
+                this.connection = new ConnectionHandler(id, config, bootstrap, this);
+                this.connection.connect();
+            }, 2, TimeUnit.SECONDS);
+        }
     }
 
     void postLogin(ConnectionHandler connection) {
@@ -140,13 +145,13 @@ public class Connection implements SocketConnection {
     @Override
     public void write(Packet packet) {
         var conn = connection;
-        if (conn != null && conn.connected()) {
+        if (conn != null && conn.authorized()) {
             conn.send(packet);
         }
     }
 
     public boolean hasConnection() {
-        return connection != null && connection.connected();
+        return connection != null && connection.authorized();
     }
 
     public void close() {
@@ -155,9 +160,13 @@ public class Connection implements SocketConnection {
         var conn = connection;
         for (ClientChannel channel : List.copyOf(channels.values())) {
             channel.close();
-            if (conn != null && conn.connected()) {
+            if (conn != null && conn.authorized()) {
                 conn.send(new C2SCloseChannelPacket(channel.id()));
             }
+        }
+        connection = null;
+        if (conn != null) {
+            conn.close();
         }
         channels.clear();
     }

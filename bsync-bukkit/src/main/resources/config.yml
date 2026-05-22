@@ -1,0 +1,9 @@
+id: client-1
+workers: 1 # сколько бизнес потоков будет?
+netty_threads: 1 # или "-Dbcsync.client.netty.threads=1" тогда здесь надо указать -1
+
+servers:
+  example:
+    ip: localhost
+    port: 8013
+    key: default

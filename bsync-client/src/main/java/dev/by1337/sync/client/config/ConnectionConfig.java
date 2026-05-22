@@ -1,15 +1,25 @@
 package dev.by1337.sync.client.config;
 
+import java.io.File;
+import java.util.Objects;
+
 public class ConnectionConfig {
-    public final String group;
     public final String ip;
     public final int port;
-    public final String keyPath;
+    public final File keyPath;
 
-    public ConnectionConfig(String group, String ip, int port, String keyPath) {
-        this.group = group;
-        this.ip = ip;
+    public ConnectionConfig(String ip, int port, File keyPath) {
+        this.ip = Objects.requireNonNull(ip);
         this.port = port;
-        this.keyPath = keyPath;
+        this.keyPath = Objects.requireNonNull(keyPath);
+    }
+
+    @Override
+    public String toString() {
+        return "ConnectionConfig{" +
+                "ip='" + ip + '\'' +
+                ", port=" + port +
+                ", keyPath=" + keyPath +
+                '}';
     }
 }

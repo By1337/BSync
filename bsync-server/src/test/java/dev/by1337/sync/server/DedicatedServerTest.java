@@ -9,6 +9,7 @@ import dev.by1337.sync.common.util.SingleSemaphore;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.junit.Test;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.UUID;
 
@@ -17,14 +18,13 @@ public class DedicatedServerTest {
 
     @Test
     public void run() throws Exception {
-        //   System.out.println(new File("authorized_keys").listFiles().length);
         var server = new DedicatedServer();
         EventLoopWorkers workers = new EventLoopWorkers("test-worker-%d", 1);
         Connection connection = new Connection(
-                new ConnectionConfig("test",
+                new ConnectionConfig(
                         "localhost",
                         server.config().tcp_port,
-                        "./authorized_keys/test_key"
+                        new File("./authorized_keys/test_key")
                 ),
                 workers,
                 "test",
@@ -35,12 +35,12 @@ public class DedicatedServerTest {
         }
         var locks = new TestClientLocks();
         var channel = connection.addChannel("test-locks", ChannelType.DATA_CHANNEL, channel2 -> {
-            channel2.pipeline().addLast("locks", locks);//todo
+            channel2.pipeline().addLast("locks", locks);
         });
         while (!channel.registered()) {
         }
+       // CountDownLatch task = new CountDownLatch(1);
         SingleSemaphore task = new SingleSemaphore();
-        task.tryAcquire();
         locks.lockAndLoadData(new UUID(13, 37), (status, arr) -> {
             System.out.println(status);
             System.out.println(Arrays.toString(arr));

@@ -21,13 +21,14 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 public class ClientBootstrap {
+    private static final int EVENT_LOOP_THREADS = Integer.getInteger("bcsync.client.netty.threads", 1);
     private static final Logger log = LoggerFactory.getLogger(ClientBootstrap.class);
     private static final LazyLoad<EpollEventLoopGroup> epollEventLoopGroup = new LazyLoad<>(() ->
-            new EpollEventLoopGroup(0, new ThreadFactoryBuilder().setNameFormat("Netty Epoll BSync IO #%d").setDaemon(true).build())
+            new EpollEventLoopGroup(EVENT_LOOP_THREADS, new ThreadFactoryBuilder().setNameFormat("Netty Epoll BSync IO #%d").setDaemon(true).build())
     );
 
     private static final LazyLoad<NioEventLoopGroup> nioEventLoopGroup = new LazyLoad<>(() ->
-            new NioEventLoopGroup(0, new ThreadFactoryBuilder()
+            new NioEventLoopGroup(EVENT_LOOP_THREADS, new ThreadFactoryBuilder()
                     .setNameFormat("Netty BSync IO #%d")
                     .setUncaughtExceptionHandler((t, e) -> log.error("Caught previously unhandled exception :", e)).setDaemon(true).build())
     );

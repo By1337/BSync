@@ -34,7 +34,7 @@ public class ChannelManager {
         }
         ServerChannel serverChannel = new ServerChannel(
                 id,
-                workers.getRandom()
+                workers.getNext()
         );
         init.accept(serverChannel);
         channels.put(id, serverChannel);
@@ -43,7 +43,7 @@ public class ChannelManager {
     }
 
     public void onReceive(Packet packet, Connection connection) {
-        System.out.println("SERVER IN " + packet);
+      //  System.out.println("SERVER IN " + packet);
         if (packet instanceof C2SCloseChannelPacket close) {
             var channel = channels.get(close.id);
             if (channel != null) {

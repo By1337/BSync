@@ -1,10 +1,11 @@
 package dev.by1337.sync.common.work;
 
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class EventLoopWorkers {
     private final EventLoopWorker[] workers;
-    private final Random random = new Random();
+    private final AtomicInteger counter = new AtomicInteger(0);
 
     public EventLoopWorkers(String name, int count) {
         workers = new EventLoopWorker[count];
@@ -13,7 +14,7 @@ public class EventLoopWorkers {
         }
     }
 
-    public EventLoopWorker getRandom() {
-        return workers[random.nextInt(workers.length)];
+    public EventLoopWorker getNext() {
+        return workers[counter.getAndIncrement() % workers.length];
     }
 }

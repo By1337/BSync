@@ -1,0 +1,10 @@
+name: BSync
+main: dev.by1337.sync.bukkit.BSync
+version: '1.0'
+author: By1337
+api-version: '1.16'
+depend:
+  - BLib
+permissions:
+  bsync.*:
+    default: op

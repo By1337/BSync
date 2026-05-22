@@ -10,5 +10,6 @@
     <module>bsync-common</module>
     <module>bsync-client</module>
     <module>bsync-server</module>
+      <module>bsync-bukkit</module>
   </modules>
 </project>
