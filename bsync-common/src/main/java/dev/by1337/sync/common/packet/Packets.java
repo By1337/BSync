@@ -35,6 +35,7 @@ public class Packets {
     public static final int S2C_CHANNEL_STATUS_PACKET = 23;
     public static final int C2S_UNLOCK_PACKET = 24;
     public static final int C2S_LOCK_STATUS_REQUEST_PACKET = 25;
+    public static final int C2S_RENEW_LOCK_PACKET = 26;
 
 
     public static Packet read(ByteBuf buf, int protocolVersion) throws DecoderException {
@@ -67,6 +68,7 @@ public class Packets {
             case S2C_CHANNEL_STATUS_PACKET -> new S2CChannelStatsPacket(buf, protocolVersion);
             case C2S_UNLOCK_PACKET -> new C2SUnlockPacket(buf, protocolVersion);
             case C2S_LOCK_STATUS_REQUEST_PACKET -> new C2SLockStatusReqestPacket(buf, protocolVersion);
+            case C2S_RENEW_LOCK_PACKET -> new C2SRenewLockPacket(buf, protocolVersion);
             default -> throw new DecoderException("Invalid packet id " + id);
         };
     }

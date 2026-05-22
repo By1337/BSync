@@ -7,16 +7,18 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
-
-public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob) implements Packet {
+public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob, int token, int version) implements Packet {
 
     public S2CLockStatusAndBlobPacket(ByteBuf buf, int protocolVersion) {
         this(switch (buf.readByte()) {
             case 0 -> Status.ACCEPTED;
             case 1 -> Status.REJECTED;
             default -> throw new DecoderException("Unknown lock status");
-        }, ByteBufCodecs.readOptional(buf, ByteBufCodecs::readByteArray));
+        },
+                ByteBufCodecs.readOptional(buf, ByteBufCodecs::readByteArray),
+                buf.readInt(),
+                buf.readInt()
+        );
     }
 
     @Override
@@ -29,6 +31,8 @@ public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob) 
         } else {
             buf.writeBoolean(false);
         }
+        buf.writeInt(token);
+        buf.writeInt(version);
     }
 
     public boolean isAccepted() {

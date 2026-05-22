@@ -45,10 +45,10 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
                 protocolVersion = hello.protocol();
                 id = hello.id();
                 if (protocolVersion < 0 || protocolVersion > Packets.PROTOCOL_VERSION) {
-                    disconnect(ctx, "Unsupported protocol version " + protocolVersion);
+                    disconnect(ctx, "Unsupported protocol token " + protocolVersion);
                     return;
                 } else if (protocolVersion < Packets.PROTOCOL_VERSION) {
-                    log.warn("Legacy protocol version {} {}[{}]", protocolVersion, id, ctx.channel().remoteAddress());
+                    log.warn("Legacy protocol token {} {}[{}]", protocolVersion, id, ctx.channel().remoteAddress());
                 }
                 state = State.LOGIN;
                 nonce = new byte[32];

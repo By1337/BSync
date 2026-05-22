@@ -103,7 +103,7 @@
         <dependency>
             <groupId>it.unimi.dsi</groupId>
             <artifactId>fastutil</artifactId>
-            <version>8.2.2</version> <!-- 1.16.5 version-->
+            <version>8.2.2</version> <!-- 1.16.5 token-->
             <scope>provided</scope>
         </dependency>
 

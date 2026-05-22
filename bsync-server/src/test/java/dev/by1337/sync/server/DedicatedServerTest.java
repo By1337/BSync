@@ -12,11 +12,12 @@ import org.junit.Test;
 import java.io.File;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.locks.LockSupport;
 
 public class DedicatedServerTest {
 
 
-    @Test
+   // @Test
     public void run() throws Exception {
         var server = new DedicatedServer(8014);
         EventLoopWorkers workers = new EventLoopWorkers("test-worker-%d", 1);
@@ -45,14 +46,17 @@ public class DedicatedServerTest {
        // CountDownLatch task = new CountDownLatch(1);
         SingleSemaphore task = new SingleSemaphore();
         task.tryAcquire();
-        locks.lockAndLoadData(key, (s, a) -> {
-            System.out.println("OLD " + s);
+        channel.eventLoop().execute(() -> {
+            locks.lockAndLoadData(key, (s, a) -> {
+                System.out.println("V1 " + s);
+            });
+            locks.unlock(key, null, () -> {
+                locks.lockAndLoadData(key, (s, a) -> {
+                    System.out.println("V2 " + s);
+                });
+            });
         });
-        locks.unlock(key, null);
-        locks.lockAndLoadData(key, (s, a) -> {
-            System.out.println("NEW " + s);
-            task.release();
-        });
+
 
 
         while (!task.tryAcquire()){

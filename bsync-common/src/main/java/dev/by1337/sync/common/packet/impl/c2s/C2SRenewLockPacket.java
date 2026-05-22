@@ -1,4 +1,4 @@
-package dev.by1337.sync.common.packet.impl.s2c;
+package dev.by1337.sync.common.packet.impl.c2s;
 
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
@@ -7,9 +7,9 @@ import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public record S2CForceUnlockPacket(UUID key, int token) implements Packet {
+public record C2SRenewLockPacket(UUID key, int token) implements Packet {
 
-    public S2CForceUnlockPacket(ByteBuf buf, int protocolVersion) {
+    public C2SRenewLockPacket(ByteBuf buf, int protocolVersion) {
         this(ByteBufCodecs.readUUID(buf), buf.readInt());
     }
 
@@ -21,6 +21,6 @@ public record S2CForceUnlockPacket(UUID key, int token) implements Packet {
 
     @Override
     public int getId() {
-        return Packets.S2C_FORCE_UNLOCK_PACKET;
+        return Packets.C2S_RENEW_LOCK_PACKET;
     }
 }

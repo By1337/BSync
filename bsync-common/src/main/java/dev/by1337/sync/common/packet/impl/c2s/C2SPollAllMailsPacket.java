@@ -7,15 +7,16 @@ import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public record C2SPollAllMailsPacket(UUID key) implements Packet {
+public record C2SPollAllMailsPacket(UUID key, int token) implements Packet {
 
     public C2SPollAllMailsPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUUID(buf));
+        this(ByteBufCodecs.readUUID(buf), buf.readInt());
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUUID(buf, key);
+        buf.writeInt(token);
     }
 
     @Override

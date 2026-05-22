@@ -8,16 +8,21 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-public record C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob) implements Packet {
+public record C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob, int token) implements Packet {
 
     public C2SUnlockAndFlushBlobPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUUID(buf), ByteBufCodecs.readOptional(buf, ByteBufCodecs::readByteArray));
+        this(
+                ByteBufCodecs.readUUID(buf),
+                ByteBufCodecs.readOptional(buf, ByteBufCodecs::readByteArray),
+                buf.readInt()
+        );
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUUID(buf, key);
         ByteBufCodecs.writeOptional(buf, blob, ByteBufCodecs::writeByteArray);
+        buf.writeInt(token);
     }
 
     @Override

@@ -9,15 +9,16 @@ import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public record S2CLockStatusRequestPacket(UUID key) implements Packet, ExpectsResponse<C2SLockStatusResponsePacket> {
+public record S2CLockStatusRequestPacket(UUID key, int st) implements Packet, ExpectsResponse<C2SLockStatusResponsePacket> {
 
     public S2CLockStatusRequestPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUUID(buf));
+        this(ByteBufCodecs.readUUID(buf), buf.readInt());
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUUID(buf, key);
+        buf.writeInt(st);
     }
 
     @Override
