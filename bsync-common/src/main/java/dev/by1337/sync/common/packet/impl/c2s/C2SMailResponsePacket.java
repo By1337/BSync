@@ -7,31 +7,13 @@ import io.netty.handler.codec.DecoderException;
 
 public final class C2SMailResponsePacket implements Packet {
 
-    public Status status;
+    public final Status status;
 
     public C2SMailResponsePacket(Status status) {
         this.status = status;
     }
 
-    public C2SMailResponsePacket() {
-    }
-
-    public static C2SMailResponsePacket reject() {
-        return new C2SMailResponsePacket(Status.REJECTED);
-    }
-    public static C2SMailResponsePacket accepted() {
-        return new C2SMailResponsePacket(Status.ACCEPTED);
-    }
-
-    public boolean isAccepted() {
-        return status == Status.ACCEPTED;
-    }
-    public boolean isRejected() {
-        return status == Status.REJECTED;
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SMailResponsePacket(ByteBuf buf, int protocolVersion) {
         var v = buf.readByte();
         if (v == 0) {
             status = Status.ACCEPTED;
@@ -51,6 +33,21 @@ public final class C2SMailResponsePacket implements Packet {
     public int getId() {
         return Packets.C2S_MAIL_STATUS_PACKET;
     }
+
+    public static C2SMailResponsePacket reject() {
+        return new C2SMailResponsePacket(Status.REJECTED);
+    }
+    public static C2SMailResponsePacket accepted() {
+        return new C2SMailResponsePacket(Status.ACCEPTED);
+    }
+
+    public boolean isAccepted() {
+        return status == Status.ACCEPTED;
+    }
+    public boolean isRejected() {
+        return status == Status.REJECTED;
+    }
+
 
     public enum Status {
         ACCEPTED((byte) 0),

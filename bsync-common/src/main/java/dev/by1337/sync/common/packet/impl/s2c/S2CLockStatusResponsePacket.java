@@ -7,13 +7,10 @@ import io.netty.handler.codec.DecoderException;
 
 public final class S2CLockStatusResponsePacket implements Packet {
 
-    public Status status;
+    public final Status status;
 
     public S2CLockStatusResponsePacket(Status status) {
         this.status = status;
-    }
-
-    public S2CLockStatusResponsePacket() {
     }
 
     public static S2CLockStatusResponsePacket reject() {
@@ -30,8 +27,7 @@ public final class S2CLockStatusResponsePacket implements Packet {
     }
 
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public S2CLockStatusResponsePacket(ByteBuf buf, int protocolVersion) {
         var v = buf.readByte();
         if (v == 0) {
             status = Status.OWNED;

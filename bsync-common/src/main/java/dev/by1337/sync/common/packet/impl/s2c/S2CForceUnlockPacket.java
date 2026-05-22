@@ -8,17 +8,13 @@ import io.netty.buffer.ByteBuf;
 import java.util.UUID;
 
 public final class S2CForceUnlockPacket implements Packet {
-    public UUID key;
+    public final UUID key;
 
     public S2CForceUnlockPacket(UUID key) {
         this.key = key;
     }
 
-    public S2CForceUnlockPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public S2CForceUnlockPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
     }
 

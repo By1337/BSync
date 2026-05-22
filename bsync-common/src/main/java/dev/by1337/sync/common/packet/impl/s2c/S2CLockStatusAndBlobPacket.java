@@ -10,26 +10,15 @@ import java.util.Arrays;
 
 public final class S2CLockStatusAndBlobPacket implements Packet {
 
-    public Status status;
-    public byte @Nullable [] blob;
-
-    public S2CLockStatusAndBlobPacket() {
-    }
+    public final Status status;
+    public final byte @Nullable [] blob;
 
     public S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob) {
         this.status = status;
         this.blob = blob;
     }
 
-    public boolean isAccepted() {
-        return status == Status.ACCEPTED;
-    }
-    public boolean isRejected() {
-        return status == Status.REJECTED;
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public S2CLockStatusAndBlobPacket(ByteBuf buf, int protocolVersion) {
         var v = buf.readByte();
         if (v == 0) {
             status = Status.ACCEPTED;
@@ -41,9 +30,10 @@ public final class S2CLockStatusAndBlobPacket implements Packet {
         if (buf.readBoolean()) {
             blob = new byte[buf.readInt()];
             buf.readBytes(blob);
+        }else {
+            blob = null;
         }
     }
-
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         buf.writeByte(status.id);
@@ -54,6 +44,14 @@ public final class S2CLockStatusAndBlobPacket implements Packet {
         } else {
             buf.writeBoolean(false);
         }
+    }
+
+    public boolean isAccepted() {
+        return status == Status.ACCEPTED;
+    }
+
+    public boolean isRejected() {
+        return status == Status.REJECTED;
     }
 
     @Override

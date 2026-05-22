@@ -40,12 +40,12 @@ public class RequestsHandler implements ChannelHandler {
             ctx.connection().write(new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet()));
             requestsTimeOuter();
         } else if (msg instanceof ResponsePacket r) {
-            var v = requests.remove(r.uid);
+            var v = requests.remove(r.uid());
             if (v != null) {
                 // noinspection unchecked
                 PacketCallback<Packet> callback = (PacketCallback<Packet>) v.callback;
                 try {
-                    callback.accept(r.payload, ctx.connection());
+                    callback.accept(r.payload(), ctx.connection());
                 } catch (ClassCastException e) {
                     log.error("Bad response type", e);
                     try {

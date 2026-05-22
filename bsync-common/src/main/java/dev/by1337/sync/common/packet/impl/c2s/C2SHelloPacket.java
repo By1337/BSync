@@ -6,19 +6,15 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
 public final class C2SHelloPacket implements Packet {
-    public int protocol;
-    public String id;
+    public final int protocol;
+    public final String id;
 
     public C2SHelloPacket(int protocol, String id) {
         this.protocol = protocol;
         this.id = id;
     }
 
-    public C2SHelloPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SHelloPacket(ByteBuf buf, int protocolVersion) {
         protocol = buf.readInt();
         id = ByteBufCodecs.readUtf8(buf);
     }

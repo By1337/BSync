@@ -9,19 +9,15 @@ import io.netty.buffer.ByteBuf;
 import java.util.UUID;
 
 public final class C2SOpenChannelPacket implements Packet {
-    public String id;
-    public ChannelType channelType;
+    public final String id;
+    public final ChannelType channelType;
 
     public C2SOpenChannelPacket(String id, ChannelType channelType) {
         this.id = id;
         this.channelType = channelType;
     }
 
-    public C2SOpenChannelPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SOpenChannelPacket(ByteBuf buf, int protocolVersion) {
         id= ByteBufCodecs.readUtf8(buf);
         channelType = ChannelType.fromId(buf.readByte());
     }

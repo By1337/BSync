@@ -10,19 +10,15 @@ import io.netty.buffer.ByteBuf;
 import java.util.UUID;
 
 public final class S2CMailAcceptPacket implements Packet, ExpectsResponse<C2SMailResponsePacket> {
-    public UUID key;
-    public String json;
-
-    public S2CMailAcceptPacket() {
-    }
+    public final UUID key;
+    public final String json;
 
     public S2CMailAcceptPacket(UUID key, String json) {
         this.key = key;
         this.json = json;
     }
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public S2CMailAcceptPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
         json = ByteBufCodecs.readUtf8(buf);
     }

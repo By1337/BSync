@@ -9,19 +9,15 @@ import io.netty.handler.codec.DecoderException;
 import java.util.UUID;
 
 public final class C2SPushMailPacket implements Packet {
-    public UUID key;
-    public String json;
-
-    public C2SPushMailPacket() {
-    }
+    public final UUID key;
+    public final String json;
 
     public C2SPushMailPacket(UUID key, String json) {
         this.key = key;
         this.json = json;
     }
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SPushMailPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
         json = ByteBufCodecs.readUtf8(buf);
     }

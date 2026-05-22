@@ -9,8 +9,7 @@ public final class PingPacket implements Packet {
     public PingPacket() {
     }
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public PingPacket(ByteBuf buf, int protocolVersion) {
     }
 
     @Override

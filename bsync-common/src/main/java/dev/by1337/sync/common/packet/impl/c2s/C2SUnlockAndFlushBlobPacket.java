@@ -9,23 +9,21 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 public final class C2SUnlockAndFlushBlobPacket implements Packet {
-    public UUID key;
-    public byte @Nullable [] blob;
+    public final UUID key;
+    public final byte @Nullable [] blob;
 
     public C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob) {
         this.key = key;
         this.blob = blob;
     }
 
-    public C2SUnlockAndFlushBlobPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SUnlockAndFlushBlobPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
         if (buf.readBoolean()) {
             blob = new byte[buf.readInt()];
             buf.readBytes(blob);
+        }else {
+            blob = null;
         }
     }
 

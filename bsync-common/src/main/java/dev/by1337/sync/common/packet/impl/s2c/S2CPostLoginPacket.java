@@ -10,8 +10,7 @@ public final class S2CPostLoginPacket implements Packet {
     public S2CPostLoginPacket() {
     }
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public S2CPostLoginPacket(ByteBuf buf, int protocolVersion) {
     }
 
     @Override

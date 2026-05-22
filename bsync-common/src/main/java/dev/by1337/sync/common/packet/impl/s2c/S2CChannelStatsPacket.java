@@ -6,19 +6,15 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
 public final class S2CChannelStatsPacket implements Packet {
-    public String id;
-    public boolean opened;
+    public final String id;
+    public final boolean opened;
 
     public S2CChannelStatsPacket(String id, boolean opened) {
         this.id = id;
         this.opened = opened;
     }
 
-    public S2CChannelStatsPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public S2CChannelStatsPacket(ByteBuf buf, int protocolVersion) {
         id = ByteBufCodecs.readUtf8(buf);
         opened = buf.readBoolean();
     }

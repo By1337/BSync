@@ -8,17 +8,13 @@ import io.netty.handler.codec.DecoderException;
 import java.util.Arrays;
 
 public final class C2SLoginPacket implements Packet {
-    public byte[] payload;
+    public final byte[] payload;
 
     public C2SLoginPacket(byte[] payload) {
         this.payload = payload;
     }
 
-    public C2SLoginPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SLoginPacket(ByteBuf buf, int protocolVersion) {
         var size = buf.readInt();
         if (size > 256) throw new DecoderException("payload size too large " + size + " bytes");
         payload = new byte[size];

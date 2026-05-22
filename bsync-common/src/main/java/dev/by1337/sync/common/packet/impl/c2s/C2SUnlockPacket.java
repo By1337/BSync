@@ -9,17 +9,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 public final class C2SUnlockPacket implements Packet {
-    public UUID key;
+    public final UUID key;
 
     public C2SUnlockPacket(UUID key) {
         this.key = key;
     }
 
-    public C2SUnlockPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SUnlockPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
     }
 

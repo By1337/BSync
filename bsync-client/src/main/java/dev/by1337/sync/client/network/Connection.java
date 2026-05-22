@@ -106,7 +106,7 @@ public class Connection implements SocketConnection {
         } else if (packet instanceof PingPacket) {
             write(new PongPacket(System.currentTimeMillis()));
         } else if (packet instanceof PongPacket p) {
-            ping = System.currentTimeMillis() - p.timestamp;
+            ping = System.currentTimeMillis() - p.timestamp();
             log.info("ping {}", ping);
         } else {
             log.error("Packet received unknown packet {}", packet);

@@ -6,19 +6,15 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
 public final class ChanneledPacket implements Packet {
-    public String id;
-    public Packet payload;
+    public final String id;
+    public final Packet payload;
 
     public ChanneledPacket(String id, Packet payload) {
         this.id = id;
         this.payload = payload;
     }
 
-    public ChanneledPacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public ChanneledPacket(ByteBuf buf, int protocolVersion) {
         id = ByteBufCodecs.readUtf8(buf);
         payload = Packets.read(buf, protocolVersion);
     }

@@ -61,7 +61,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
                     return;
                 }
                 PrivateKey key = Ed25519.privateKeyFromBase64(Files.readString(connectionConfig.keyPath.toPath()));
-                var nonce = noncePacket.nonce;
+                var nonce = noncePacket.nonce();
                 var idBytes = id.getBytes(StandardCharsets.UTF_8);
                 byte[] payload = Arrays.copyOf(idBytes, idBytes.length + nonce.length);
                 System.arraycopy(nonce, 0, payload, idBytes.length, nonce.length);

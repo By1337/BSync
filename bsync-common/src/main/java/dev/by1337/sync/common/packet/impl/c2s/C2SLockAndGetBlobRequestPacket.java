@@ -10,17 +10,13 @@ import io.netty.buffer.ByteBuf;
 import java.util.UUID;
 
 public final class C2SLockAndGetBlobRequestPacket implements Packet, ExpectsResponse<S2CLockStatusAndBlobPacket> {
-    public UUID key;
-
-    public C2SLockAndGetBlobRequestPacket() {
-    }
+    public final UUID key;
 
     public C2SLockAndGetBlobRequestPacket(UUID key) {
         this.key = key;
     }
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SLockAndGetBlobRequestPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
     }
 

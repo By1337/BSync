@@ -8,17 +8,13 @@ import io.netty.buffer.ByteBuf;
 import java.util.UUID;
 
 public final class C2SPollAllMailsPacket implements Packet {
-    public UUID key;
-
-    public C2SPollAllMailsPacket() {
-    }
+    public final UUID key;
 
     public C2SPollAllMailsPacket(UUID key) {
         this.key = key;
     }
 
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
+    public C2SPollAllMailsPacket(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
     }
 

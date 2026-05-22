@@ -5,24 +5,10 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import org.jetbrains.annotations.Nullable;
 
-public final class ResponsePacket implements Packet {
-    public int uid;
-    public @Nullable Packet payload;
+public record ResponsePacket(int uid, @Nullable Packet payload) implements Packet {
 
-    public ResponsePacket(int uid, @Nullable Packet payload) {
-        this.uid = uid;
-        this.payload = payload;
-    }
-
-    public ResponsePacket() {
-    }
-
-    @Override
-    public void read(ByteBuf buf, int protocolVersion) {
-        uid = buf.readInt();
-        if (buf.readBoolean()) {
-            payload = Packets.read(buf, protocolVersion);
-        }
+    public ResponsePacket(ByteBuf buf, int protocolVersion) {
+        this(buf.readInt(), buf.readBoolean() ? Packets.read(buf, protocolVersion) : null);
     }
 
     @Override
@@ -37,13 +23,5 @@ public final class ResponsePacket implements Packet {
     @Override
     public int getId() {
         return Packets.RESPONSE_PACKET;
-    }
-
-    @Override
-    public String toString() {
-        return "ResponsePacket{" +
-                "uid=" + uid +
-                ", payload=" + payload +
-                '}';
     }
 }
