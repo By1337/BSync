@@ -17,7 +17,7 @@ import java.util.concurrent.locks.LockSupport;
 public class DedicatedServerTest {
 
 
-   // @Test
+    @Test
     public void run() throws Exception {
         var server = new DedicatedServer(8014);
         EventLoopWorkers workers = new EventLoopWorkers("test-worker-%d", 1);

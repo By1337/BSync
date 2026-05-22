@@ -7,6 +7,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+import java.util.Objects;
+
 public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob, int token, int version) implements Packet {
 
     public S2CLockStatusAndBlobPacket(ByteBuf buf, int protocolVersion) {
@@ -57,5 +60,17 @@ public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob, 
         Status(byte id) {
             this.id = id;
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        S2CLockStatusAndBlobPacket that = (S2CLockStatusAndBlobPacket) o;
+        return token == that.token && version == that.version && status == that.status && Objects.deepEquals(blob, that.blob);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(status, Arrays.hashCode(blob), token, version);
     }
 }

@@ -83,24 +83,8 @@ public class ServerLockHandler implements ChannelHandler {
                                     r.version()
                             )
                     );
-                    // ensureLockOwnership(r.key());
                 }
-            } /*else if (payload instanceof C2SRelockRequestPacket relock) {
-                var lock = lockMap.tryLock(relock.key(), ctx.connection().transport());
-                if (lock == null) {
-                    request.response(relock, S2CLockStatusResponsePacket.reject());
-                } else {
-                    request.response(relock, S2CLockStatusResponsePacket.owned());
-                }
-            }*//* else if (payload instanceof C2SLockStatusReqestPacket s) {
-                var lock = lockMap.getLock(s.key());
-                if (lock != null && lock.token == s.token() && lock.owner == ctx.connection().transport()) {
-                    lock.lastConfirm = System.currentTimeMillis();
-                    request.response(s, S2CLockStatusResponsePacket.owned(s.token()));
-                } else {
-                    request.response(s, S2CLockStatusResponsePacket.reject(s.token()));
-                }
-            }*/ else {
+            } else {
                 ctx.fire(msg);
             }
         } else if (msg instanceof C2SRenewLockPacket(UUID key, int token)) {

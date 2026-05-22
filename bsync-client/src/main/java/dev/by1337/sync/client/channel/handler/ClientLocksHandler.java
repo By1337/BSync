@@ -87,41 +87,10 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                 } catch (Exception e) {
                     log.error("Failed to accept mail {}", mail, e);
                 }
-            } /*else if (r.payload() instanceof S2CLockStatusRequestPacket status) {
-                var lock = locks.get(status.key());
-                if (lock == null) {
-                    r.response(status, C2SLockStatusResponsePacket.free());
-                }
-                //todo игнорим ответ?
-                if (lock == null || lock.token != status.token()) return; //outdated
-
-            }*/
+            }
         } else {
             if (msg instanceof ChannelActiveMessage) {
-/*                for (var lock : List.copyOf(locks.entrySet())) {
-                    pipeline.execute(RequestsHandler.request(
-                            new C2SRelockRequestPacket(lock.getKey(), ++lock.getValue().ct),
-                            (status, con) -> {
-                                var l = locks.get(lock.getKey());
-                                if (status == null){
-                                    //нам не ответили...
-                                }
-                                if (l == null){
-                                    //мы не держим блокировку...
-                                }
-                                if (l.token != status.token()){
-                                    //эпохи не совпадают
-                                }
-                                if (l.ct != status.ct()){
-                                    //
-                                }
-                        if (status == null || status.isRejected()) {
-                            locks.remove(lock);
-                            byte[] arr = forceUnlockNow(lock);
-                            log.error("Failed to reget lock for {}! DATA LOST {} {}", lock, arrayToBase64(arr), status);
-                        }
-                    }, 15_000), freedom);
-                }*/
+
             } else if (msg instanceof ChannelInactiveMessage) {
                 log.warn("Connection lost maybe data lost!");
             }

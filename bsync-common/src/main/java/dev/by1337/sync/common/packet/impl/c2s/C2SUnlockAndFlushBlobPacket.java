@@ -6,6 +6,8 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.UUID;
 
 public record C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob, int token) implements Packet {
@@ -28,5 +30,17 @@ public record C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob, int 
     @Override
     public int getId() {
         return Packets.C2S_UNLOCK_AND_FLUSH_BLOB_PACKET;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        C2SUnlockAndFlushBlobPacket that = (C2SUnlockAndFlushBlobPacket) o;
+        return token == that.token && Objects.equals(key, that.key) && Objects.deepEquals(blob, that.blob);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(key, Arrays.hashCode(blob), token);
     }
 }

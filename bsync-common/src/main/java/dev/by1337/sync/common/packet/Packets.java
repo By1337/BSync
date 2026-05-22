@@ -22,20 +22,15 @@ public class Packets {
     public static final int C2S_MAIL_STATUS_PACKET = 10;
     public static final int C2S_PUSH_MAIL_PACKET = 11;
     public static final int C2S_POLL_ALL_MAILS_PACKET = 12;
-    public static final int S2C_LOCK_STATUS_REQUEST_PACKET = 13;
-    public static final int C2S_LOCK_STATUS_RESPONSE_PACKET = 14;
-    public static final int S2C_FORCE_UNLOCK_PACKET = 15;
-    public static final int C2S_LOCK_AND_GET_BLOB_PACKET = 16;
-    public static final int S2C_LOCK_STATUS_AND_BLOB_PACKET = 17;
-    public static final int C2S_RELOCK_PACKET = 18;
-    public static final int S2C_LOCK_STATUS_PACKET = 19;
-    public static final int C2S_UNLOCK_AND_FLUSH_BLOB_PACKET = 20;
-    public static final int C2S_OPEN_CHANNEL_PACKET = 21;
-    public static final int C2S_CLOSE_CHANNEL_PACKET = 22;
-    public static final int S2C_CHANNEL_STATUS_PACKET = 23;
-    public static final int C2S_UNLOCK_PACKET = 24;
-    public static final int C2S_LOCK_STATUS_REQUEST_PACKET = 25;
-    public static final int C2S_RENEW_LOCK_PACKET = 26;
+    public static final int S2C_FORCE_UNLOCK_PACKET = 13;
+    public static final int C2S_LOCK_AND_GET_BLOB_PACKET = 14;
+    public static final int S2C_LOCK_STATUS_AND_BLOB_PACKET = 15;
+    public static final int C2S_UNLOCK_AND_FLUSH_BLOB_PACKET = 16;
+    public static final int C2S_OPEN_CHANNEL_PACKET = 17;
+    public static final int C2S_CLOSE_CHANNEL_PACKET = 18;
+    public static final int S2C_CHANNEL_STATUS_PACKET = 19;
+    public static final int C2S_UNLOCK_PACKET = 20;
+    public static final int C2S_RENEW_LOCK_PACKET = 21;
 
 
     public static Packet read(ByteBuf buf, int protocolVersion) throws DecoderException {
@@ -55,19 +50,14 @@ public class Packets {
             case C2S_MAIL_STATUS_PACKET -> new C2SMailResponsePacket(buf, protocolVersion);
             case C2S_PUSH_MAIL_PACKET -> new C2SPushMailPacket(buf, protocolVersion);
             case C2S_POLL_ALL_MAILS_PACKET -> new C2SPollAllMailsPacket(buf, protocolVersion);
-            case S2C_LOCK_STATUS_REQUEST_PACKET -> new S2CLockStatusRequestPacket(buf, protocolVersion);
-            case C2S_LOCK_STATUS_RESPONSE_PACKET -> new C2SLockStatusResponsePacket(buf, protocolVersion);
             case S2C_FORCE_UNLOCK_PACKET -> new S2CForceUnlockPacket(buf, protocolVersion);
             case C2S_LOCK_AND_GET_BLOB_PACKET -> new C2SLockAndGetBlobRequestPacket(buf, protocolVersion);
             case S2C_LOCK_STATUS_AND_BLOB_PACKET -> new S2CLockStatusAndBlobPacket(buf, protocolVersion);
-            case C2S_RELOCK_PACKET -> new C2SRelockRequestPacket(buf, protocolVersion);
-            case S2C_LOCK_STATUS_PACKET -> new S2CLockStatusResponsePacket(buf, protocolVersion);
             case C2S_UNLOCK_AND_FLUSH_BLOB_PACKET -> new C2SUnlockAndFlushBlobPacket(buf, protocolVersion);
             case C2S_OPEN_CHANNEL_PACKET -> new C2SOpenChannelPacket(buf, protocolVersion);
             case C2S_CLOSE_CHANNEL_PACKET -> new C2SCloseChannelPacket(buf, protocolVersion);
             case S2C_CHANNEL_STATUS_PACKET -> new S2CChannelStatsPacket(buf, protocolVersion);
             case C2S_UNLOCK_PACKET -> new C2SUnlockPacket(buf, protocolVersion);
-            case C2S_LOCK_STATUS_REQUEST_PACKET -> new C2SLockStatusReqestPacket(buf, protocolVersion);
             case C2S_RENEW_LOCK_PACKET -> new C2SRenewLockPacket(buf, protocolVersion);
             default -> throw new DecoderException("Invalid packet id " + id);
         };

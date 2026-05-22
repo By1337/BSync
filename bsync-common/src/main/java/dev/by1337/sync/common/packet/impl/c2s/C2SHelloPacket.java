@@ -13,7 +13,7 @@ public record C2SHelloPacket(int protocol, String id) implements Packet {
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
-        buf.writeInt(protocolVersion);
+        buf.writeInt(protocol);
         ByteBufCodecs.writeUtf8(buf, id);
     }
 
