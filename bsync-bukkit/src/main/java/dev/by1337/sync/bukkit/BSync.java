@@ -1,12 +1,15 @@
 package dev.by1337.sync.bukkit;
 
 import dev.by1337.core.util.io.ResourceUtil;
+import dev.by1337.sync.bukkit.test.TestInvSyncHandler;
 import dev.by1337.sync.client.config.Config;
 import dev.by1337.sync.client.config.ConnectionConfig;
 import dev.by1337.sync.client.network.ClientBootstrap;
 import dev.by1337.sync.client.network.Connection;
+import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.common.work.EventLoopWorkers;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -79,6 +82,11 @@ public class BSync extends JavaPlugin {
 
     @Override
     public void onEnable() {
+     //   getConnection("example").addChannel("test-inv", ChannelType.DATA_CHANNEL, channel -> {
+     //       channel.pipeline().addLast("invs", new TestInvSyncHandler(this));
+     //   });
+        //Player pl;
+        //pl.getInventory().clear();
     }
 
     @Override

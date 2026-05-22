@@ -13,13 +13,17 @@ import dev.by1337.sync.common.work.EventLoopWorker;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.*;
+import java.util.Base64;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.BiConsumer;
 
 public abstract class ClientLocksHandler implements ChannelHandler {
     private Logger log = DEFAULT_LOGGER;
     private EventLoopWorker eventLoop;
-    private final Set<UUID> locks = new HashSet<>();
+    private final Set<UUID> locks = new ConcurrentSkipListSet<>();
     private Connection freedom;
     private Pipeline pipeline;
 
@@ -35,6 +39,14 @@ public abstract class ClientLocksHandler implements ChannelHandler {
         pipeline = runtime.pipeline();
     }
 
+    public Logger getLogger() {
+        return log;
+    }
+
+    public boolean isLocked(UUID uuid) {
+        return locks.contains(uuid);
+    }
+
     protected abstract byte[] forceUnlockNow(UUID key);
 
     protected abstract void onMailAccept(UUID key, String json);
@@ -47,7 +59,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                 log.error("Force unlocked by server {}! DATA LOST {}", unlock.key, Base64.getEncoder().encodeToString(arr));
             }
         } else if (msg instanceof IncomingRequest r) {
-            if (r.msg() instanceof S2CMailAcceptPacket mail) {
+            if (r.payload() instanceof S2CMailAcceptPacket mail) {
                 if (!locks.contains(mail.key)) {
                     r.out().accept(C2SMailResponsePacket.reject());
                 } else {
@@ -58,7 +70,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                         log.error("Failed to accept mail {}", mail, e);
                     }
                 }
-            } else if (r.msg() instanceof S2CLockStatusRequestPacket status) {
+            } else if (r.payload() instanceof S2CLockStatusRequestPacket status) {
                 if (locks.contains(status.key)) {
                     r.out().accept(C2SLockStatusResponsePacket.locked());
                 } else {
@@ -109,7 +121,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
         });
     }
 
-    public void unlock(UUID key, byte[] blob) {
+    public void unlock(UUID key, byte @Nullable [] blob) {
         eventLoop.execute(() -> {
             if (locks.remove(key)) {
                 freedom.write(new C2SUnlockAndFlushBlobPacket(key, blob));

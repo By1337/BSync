@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 
 public class Pipeline {
     private static final Logger log = LoggerFactory.getLogger(Pipeline.class);
@@ -21,6 +22,11 @@ public class Pipeline {
     }
 
 
+    public void schedule(ChannelMessage msg, Connection out, long ms) {
+        eventLoop.schedule(() -> {
+            handle0(msg, 0, out);
+        }, ms);
+    }
     public void handle(ChannelMessage msg, Connection out) {
         eventLoop.execute(() -> {
             handle0(msg, 0, out);
@@ -40,12 +46,18 @@ public class Pipeline {
             task.run();
         });
     }
-    public void closeAll(){
+    public CompletableFuture<Void> closeAll(){
+        CompletableFuture<Void> future = new CompletableFuture<>();
         eventLoop.execute(() -> {
-            for (Entry handler : handlers) {
-                handler.handler.close();
+            try {
+                for (Entry handler : handlers) {
+                    handler.handler.close();
+                }
+            }finally {
+                future.complete(null);
             }
         });
+        return future;
     }
 
     private void scheduleDrain() {

@@ -12,6 +12,7 @@ import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
 import dev.by1337.sync.common.util.SingleSemaphore;
+import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,14 +43,14 @@ public class Connection implements SocketConnection {
         this.workers = workers;
         this.id = id;
         this.bootstrap = bootstrap;
-        pingTask();
+        pingTask(workers.getNext());
     }
 
-    private void pingTask() {
+    private void pingTask(EventLoopWorker worker) {
         if (hasConnection()) {
             write(new PingPacket());
         }
-        //  worker.schedule(this::pingTask, 1500);
+        worker.schedule(() -> pingTask(worker), 3000);
     }
 
     public void connect() {
@@ -79,7 +80,7 @@ public class Connection implements SocketConnection {
     }
 
     public void onReceive(Packet packet) {
-       // System.out.println("CLIENT IN " + packet);
+        // System.out.println("CLIENT IN " + packet);
         if (packet instanceof S2CChannelStatsPacket stats) {
             var channel = channels.get(stats.id);
             if (channel == null) {
@@ -106,7 +107,7 @@ public class Connection implements SocketConnection {
             write(new PongPacket(System.currentTimeMillis()));
         } else if (packet instanceof PongPacket p) {
             ping = System.currentTimeMillis() - p.timestamp;
-            // log.info("ping {}", ping);
+            log.info("ping {}", ping);
         } else {
             log.error("Packet received unknown packet {}", packet);
         }
@@ -159,9 +160,17 @@ public class Connection implements SocketConnection {
         closed = true;
         var conn = connection;
         for (ClientChannel channel : List.copyOf(channels.values())) {
-            channel.close();
+            try {
+                channel.close().get(5, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.error("Error while closing channel {}", channel.id(), e);
+            }
             if (conn != null && conn.authorized()) {
-                conn.send(new C2SCloseChannelPacket(channel.id()));
+                try {
+                    conn.writeAndFlush(new C2SCloseChannelPacket(channel.id()))
+                            .await(10, TimeUnit.SECONDS);
+                }catch (InterruptedException e){
+                }
             }
         }
         connection = null;

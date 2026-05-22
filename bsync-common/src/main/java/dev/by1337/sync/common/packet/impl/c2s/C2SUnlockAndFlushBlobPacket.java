@@ -4,14 +4,15 @@ import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
 public final class C2SUnlockAndFlushBlobPacket implements Packet {
     public UUID key;
-    public byte[] blob;
+    public byte @Nullable [] blob;
 
-    public C2SUnlockAndFlushBlobPacket(UUID key, byte[] blob) {
+    public C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob) {
         this.key = key;
         this.blob = blob;
     }
@@ -22,15 +23,22 @@ public final class C2SUnlockAndFlushBlobPacket implements Packet {
     @Override
     public void read(ByteBuf buf, int protocolVersion) {
         key = ByteBufCodecs.readUUID(buf);
-        blob = new byte[buf.readInt()];
-        buf.readBytes(blob);
+        if (buf.readBoolean()) {
+            blob = new byte[buf.readInt()];
+            buf.readBytes(blob);
+        }
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUUID(buf, key);
-        buf.writeInt(blob.length);
-        buf.writeBytes(blob);
+        if (blob != null) {
+            buf.writeBoolean(true);
+            buf.writeInt(blob.length);
+            buf.writeBytes(blob);
+        } else {
+            buf.writeBoolean(false);
+        }
     }
 
     @Override

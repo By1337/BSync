@@ -50,14 +50,20 @@ public class ServerLockHandler implements ChannelHandler {
                 log.error("Client {} disconnected but has locks! {}", connection, s);
             }
             ctx.fire(msg);
-        } else if (msg instanceof IncomingRequest(ChannelMessage payload, Consumer<Packet> out)) {
+        } else if (msg instanceof IncomingRequest request) {
+            ChannelMessage payload = request.payload();
+            Consumer<Packet> out = request.out();
             if (payload instanceof C2SLockAndGetBlobRequestPacket r) {
                 var lock = lockMap.tryLock(r.key, ctx.connection().transport());
                 if (lock == null) {
-                    out.accept(new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.REJECTED, null));
-                    return;
+                    if (++request.counter >= 10) {
+                        out.accept(new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.REJECTED, null));
+                    } else {
+                        pipeline.schedule(msg, ctx.connection(), 500);
+                    }
+                } else {
+                    out.accept(new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, database.get(r.key)));
                 }
-                out.accept(new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, database.get(r.key)));
             } else if (payload instanceof C2SRelockRequestPacket relock) {
                 var lock = lockMap.tryLock(relock.key, ctx.connection().transport());
                 if (lock == null) {

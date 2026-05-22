@@ -8,10 +8,7 @@ import dev.by1337.sync.common.packet.impl.c2s.C2SLoginPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +76,9 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         }
     }
 
+    public ChannelFuture writeAndFlush(Packet packet) {
+        return channel.writeAndFlush(packet);
+    }
     public void send(Packet packet) {
         channel.write(packet);
         if (flushScheduled.compareAndSet(false, true)) {

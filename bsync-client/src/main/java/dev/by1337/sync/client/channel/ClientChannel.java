@@ -13,6 +13,8 @@ import dev.by1337.sync.common.work.EventLoopWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.CompletableFuture;
+
 public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Connection {
     private final Logger log;
     private final Connection connection;
@@ -87,8 +89,8 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         pipeline.handle(ChannelInactiveMessage.INSTANCE, this);
     }
 
-    public void close() {
-        pipeline.closeAll();
+    public CompletableFuture<Void> close() {
+       return pipeline.closeAll();
     }
 
     public String id() {
