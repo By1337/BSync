@@ -4,18 +4,10 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public final class RequestPacket implements Packet {
-    public final int uid;
-    public final Packet payload;
-
-    public RequestPacket(int uid, Packet payload) {
-        this.uid = uid;
-        this.payload = payload;
-    }
+public record RequestPacket(int uid, Packet payload) implements Packet {
 
     public RequestPacket(ByteBuf buf, int protocolVersion) {
-        uid = buf.readInt();
-        payload = Packets.read(buf, protocolVersion);
+        this(buf.readInt(), Packets.read(buf, protocolVersion));
     }
 
     @Override
@@ -27,13 +19,5 @@ public final class RequestPacket implements Packet {
     @Override
     public int getId() {
         return Packets.REQUEST_PACKET;
-    }
-
-    @Override
-    public String toString() {
-        return "RequestPacket{" +
-                "uid=" + uid +
-                ", payload=" + payload +
-                '}';
     }
 }

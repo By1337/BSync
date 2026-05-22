@@ -55,24 +55,24 @@ public abstract class ClientLocksHandler implements ChannelHandler {
     @Override
     public final void handle(ChannelContext ctx, ChannelMessage msg) {
         if (msg instanceof S2CForceUnlockPacket unlock) {
-            if (locks.remove(unlock.key)) {
-                byte[] arr = forceUnlockNow(unlock.key);
-                log.error("Force unlocked by server {}! DATA LOST {}", unlock.key, arrayToBase64(arr));
+            if (locks.remove(unlock.key())) {
+                byte[] arr = forceUnlockNow(unlock.key());
+                log.error("Force unlocked by server {}! DATA LOST {}", unlock.key(), arrayToBase64(arr));
             }
         } else if (msg instanceof IncomingRequest r) {
             if (r.payload() instanceof S2CMailAcceptPacket mail) {
-                if (!locks.contains(mail.key)) {
+                if (!locks.contains(mail.key())) {
                     r.response(mail, C2SMailResponsePacket.reject());
                 } else {
                     r.response(mail, C2SMailResponsePacket.accepted());
                     try {
-                        onMailAccept(mail.key, mail.json);
+                        onMailAccept(mail.key(), mail.json());
                     } catch (Exception e) {
                         log.error("Failed to accept mail {}", mail, e);
                     }
                 }
             } else if (r.payload() instanceof S2CLockStatusRequestPacket status) {
-                if (locks.contains(status.key)) {
+                if (locks.contains(status.key())) {
                     r.response(status, C2SLockStatusResponsePacket.locked());
                 } else {
                     r.response(status, C2SLockStatusResponsePacket.free());
@@ -170,7 +170,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                                 locks.add(key);
                                 ensureLockOwnership(key);
                             }
-                            callback.accept(status.isAccepted() ? LockStatus.SUCCESS : LockStatus.FAILURE, status.blob);
+                            callback.accept(status.isAccepted() ? LockStatus.SUCCESS : LockStatus.FAILURE, status.blob());
                             if (status.isAccepted()) {
                                 con.write(new C2SPollAllMailsPacket(key));
                             }

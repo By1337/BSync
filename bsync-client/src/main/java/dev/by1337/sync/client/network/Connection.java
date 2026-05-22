@@ -82,26 +82,26 @@ public class Connection implements SocketConnection {
     public void onReceive(Packet packet) {
         // System.out.println("CLIENT IN " + packet);
         if (packet instanceof S2CChannelStatsPacket stats) {
-            var channel = channels.get(stats.id);
+            var channel = channels.get(stats.id());
             if (channel == null) {
-                log.error("No channel with id {} found {}", stats.id, packet);
-                write(new C2SCloseChannelPacket(stats.id));
+                log.error("No channel with id {} found {}", stats.id(), packet);
+                write(new C2SCloseChannelPacket(stats.id()));
             } else {
                 //пупупу хзхз
-                if (stats.opened) {
+                if (stats.opened()) {
                     channel.onRegister();
                 } else {
                     channel.onChannelInactive();
-                    log.error("Channel {} has been closed by server. Try to reopen", stats.id);
+                    log.error("Channel {} has been closed by server. Try to reopen", stats.id());
                     write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
                 }
             }
         } else if (packet instanceof ChanneledPacket c) {
-            var channel = channels.get(c.id);
+            var channel = channels.get(c.id());
             if (channel == null) {
-                log.error("No channel with id {} found {}", c.id, packet);
+                log.error("No channel with id {} found {}", c.id(), packet);
             } else {
-                channel.handle(c.payload);
+                channel.handle(c.payload());
             }
         } else if (packet instanceof PingPacket) {
             write(new PongPacket(System.currentTimeMillis()));

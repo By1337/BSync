@@ -5,18 +5,10 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public final class C2SHelloPacket implements Packet {
-    public final int protocol;
-    public final String id;
-
-    public C2SHelloPacket(int protocol, String id) {
-        this.protocol = protocol;
-        this.id = id;
-    }
+public record C2SHelloPacket(int protocol, String id) implements Packet {
 
     public C2SHelloPacket(ByteBuf buf, int protocolVersion) {
-        protocol = buf.readInt();
-        id = ByteBufCodecs.readUtf8(buf);
+        this(buf.readInt(), ByteBufCodecs.readUtf8(buf));
     }
 
     @Override
@@ -28,13 +20,5 @@ public final class C2SHelloPacket implements Packet {
     @Override
     public int getId() {
         return Packets.C2S_HELLO_PACKET;
-    }
-
-    @Override
-    public String toString() {
-        return "C2SHelloPacket{" +
-                "protocol=" + protocol +
-                ", id='" + id + '\'' +
-                '}';
     }
 }

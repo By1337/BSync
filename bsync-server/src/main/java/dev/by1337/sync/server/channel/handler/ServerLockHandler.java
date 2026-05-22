@@ -4,7 +4,6 @@ import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.IncomingRequest;
 import dev.by1337.sync.common.channel.handler.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.*;
-import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.*;
 import dev.by1337.sync.common.work.EventLoopWorker;
@@ -14,7 +13,6 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.*;
-import java.util.function.Consumer;
 
 public class ServerLockHandler implements ChannelHandler {
     private final Map<UUID, byte[]> database = new HashMap<>();
@@ -66,7 +64,7 @@ public class ServerLockHandler implements ChannelHandler {
         } else if (msg instanceof IncomingRequest request) {
             ChannelMessage payload = request.payload();
             if (payload instanceof C2SLockAndGetBlobRequestPacket r) {
-                var lock = lockMap.tryLock(r.key, ctx.connection().transport());
+                var lock = lockMap.tryLock(r.key(), ctx.connection().transport());
                 if (lock == null) {
                     if (++request.counter >= 10) {
                         request.response(r, new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.REJECTED, null));
@@ -74,18 +72,18 @@ public class ServerLockHandler implements ChannelHandler {
                         pipeline.schedule(msg, ctx.connection(), 500);
                     }
                 } else {
-                    request.response(r, new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, database.get(r.key)));
-                    ensureLockOwnership(r.key);
+                    request.response(r, new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, database.get(r.key())));
+                    ensureLockOwnership(r.key());
                 }
             } else if (payload instanceof C2SRelockRequestPacket relock) {
-                var lock = lockMap.tryLock(relock.key, ctx.connection().transport());
+                var lock = lockMap.tryLock(relock.key(), ctx.connection().transport());
                 if (lock == null) {
                     request.response(relock, S2CLockStatusResponsePacket.reject());
                 } else {
                     request.response(relock, S2CLockStatusResponsePacket.owned());
                 }
             } else if (payload instanceof C2SLockStatusReqestPacket s) {
-                if (lockMap.isOwner(s.key, ctx.connection().transport())) {
+                if (lockMap.isOwner(s.key(), ctx.connection().transport())) {
                     request.response(s, S2CLockStatusResponsePacket.owned());
                 } else {
                     request.response(s, S2CLockStatusResponsePacket.reject());
@@ -94,28 +92,28 @@ public class ServerLockHandler implements ChannelHandler {
                 ctx.fire(msg);
             }
         } else if (msg instanceof C2SPollAllMailsPacket poll) {
-            if (lockMap.isOwner(poll.key, ctx.connection().transport())) {
-                var mails = this.mails.get(poll.key);
+            if (lockMap.isOwner(poll.key(), ctx.connection().transport())) {
+                var mails = this.mails.get(poll.key());
                 if (mails == null || mails.isEmpty()) return;
-                sendMail(ctx.connection(), poll.key);
+                sendMail(ctx.connection(), poll.key());
             }
         } else if (msg instanceof C2SPushMailPacket mail) {
             int id = mailIds++;
-            this.mails.computeIfAbsent(mail.key, k -> new LinkedHashMap<>()).put(id, mail.json);
-            var lock = lockMap.getLock(mail.key);
+            this.mails.computeIfAbsent(mail.key(), k -> new LinkedHashMap<>()).put(id, mail.json());
+            var lock = lockMap.getLock(mail.key());
             if (lock != null) {
-                sendMail(serverChannel.lookup(lock.owner), mail.key);
+                sendMail(serverChannel.lookup(lock.owner), mail.key());
             }
         } else if (msg instanceof C2SUnlockAndFlushBlobPacket flush) {
-            var lock = lockMap.getLock(flush.key);
+            var lock = lockMap.getLock(flush.key());
             if (lock == null || lock.owner != ctx.connection().transport()) {
-                log.error("Клиент {} пишет в {} без блокировки! DATA LOST {}", ctx.connection().transport(), flush.key, arrayToBase64(flush.blob));
+                log.error("Клиент {} пишет в {} без блокировки! DATA LOST {}", ctx.connection().transport(), flush.key(), arrayToBase64(flush.blob()));
                 return;
             }
-            database.put(flush.key, flush.blob);
-            lockMap.unlock(flush.key);
+            database.put(flush.key(), flush.blob());
+            lockMap.unlock(flush.key());
         } else if (msg instanceof C2SUnlockPacket unlock) {
-            lockMap.unlockIfOwner(unlock.key, ctx.connection().transport());
+            lockMap.unlockIfOwner(unlock.key(), ctx.connection().transport());
         } else {
             ctx.fire(msg);
         }

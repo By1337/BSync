@@ -42,8 +42,8 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
         Packet packet = Packets.read(buf, protocolVersion);
         if (state == State.HELLO) {
             if (packet instanceof C2SHelloPacket hello) {
-                protocolVersion = hello.protocol;
-                id = hello.id;
+                protocolVersion = hello.protocol();
+                id = hello.id();
                 if (protocolVersion < 0 || protocolVersion > Packets.PROTOCOL_VERSION) {
                     disconnect(ctx, "Unsupported protocol version " + protocolVersion);
                     return;
@@ -62,7 +62,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
                 var idBytes = id.getBytes(StandardCharsets.UTF_8);
                 byte[] payload = Arrays.copyOf(idBytes, idBytes.length + nonce.length);
                 System.arraycopy(nonce, 0, payload, idBytes.length, nonce.length);
-                byte[] signature = login.payload;
+                byte[] signature = login.payload();
                 boolean valid = false;
                 for (PublicKey key : server.config().getAuthorizedKeys()) {
                     try {

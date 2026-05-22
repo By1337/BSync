@@ -4,13 +4,10 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public final class S2CPostLoginPacket implements Packet {
-
-
-    public S2CPostLoginPacket() {
-    }
+public record S2CPostLoginPacket() implements Packet {
 
     public S2CPostLoginPacket(ByteBuf buf, int protocolVersion) {
+        this();
     }
 
     @Override

@@ -59,8 +59,8 @@ public class RequestsHandler implements ChannelHandler {
             }
         } else if (msg instanceof RequestPacket r) {
             ctx.pipeline().execute(
-                    new IncomingRequest(r.payload,
-                            result -> ctx.connection().write(new ResponsePacket(r.uid, result))),
+                    new IncomingRequest(r.payload(),
+                            result -> ctx.connection().write(new ResponsePacket(r.uid(), result))),
                     ctx.connection()
             );
         } else {

@@ -6,20 +6,10 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-import java.util.UUID;
-
-public final class C2SOpenChannelPacket implements Packet {
-    public final String id;
-    public final ChannelType channelType;
-
-    public C2SOpenChannelPacket(String id, ChannelType channelType) {
-        this.id = id;
-        this.channelType = channelType;
-    }
+public record C2SOpenChannelPacket(String id, ChannelType channelType) implements Packet {
 
     public C2SOpenChannelPacket(ByteBuf buf, int protocolVersion) {
-        id= ByteBufCodecs.readUtf8(buf);
-        channelType = ChannelType.fromId(buf.readByte());
+        this(ByteBufCodecs.readUtf8(buf), ChannelType.fromId(buf.readByte()));
     }
 
     @Override
@@ -31,13 +21,5 @@ public final class C2SOpenChannelPacket implements Packet {
     @Override
     public int getId() {
         return Packets.C2S_OPEN_CHANNEL_PACKET;
-    }
-
-    @Override
-    public String toString() {
-        return "C2SOpenChannelPacket{" +
-                "id='" + id + '\'' +
-                ", channelType=" + channelType +
-                '}';
     }
 }

@@ -4,12 +4,9 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public final class PingPacket implements Packet {
-
-    public PingPacket() {
-    }
-
+public record PingPacket() implements Packet {
     public PingPacket(ByteBuf buf, int protocolVersion) {
+        this();
     }
 
     @Override
@@ -19,10 +16,5 @@ public final class PingPacket implements Packet {
     @Override
     public int getId() {
         return Packets.PING_PACKET;
-    }
-
-    @Override
-    public String toString() {
-        return "PingPacket{}";
     }
 }

@@ -45,35 +45,35 @@ public class ChannelManager {
     public void onReceive(Packet packet, Connection connection) {
       //  System.out.println("SERVER IN " + packet);
         if (packet instanceof C2SCloseChannelPacket close) {
-            var channel = channels.get(close.id);
+            var channel = channels.get(close.id());
             if (channel != null) {
                 channel.handle(new ClientDisconnectMessage(connection), connection);
             } else {
-                log.error("Try to close unknown channel {} {}", close.id, connection);
+                log.error("Try to close unknown channel {} {}", close.id(), connection);
             }
         } else if (packet instanceof ChanneledPacket c) {
-            var channel = channels.get(c.id);
+            var channel = channels.get(c.id());
             if (channel != null) {
-                channel.handle(c.payload, connection);
+                channel.handle(c.payload(), connection);
             } else {
-                log.error("Received packet for unknown channel {} {} {}", c.id, connection, c.payload);
-                connection.write(new S2CChannelStatsPacket(c.id, false));
+                log.error("Received packet for unknown channel {} {} {}", c.id(), connection, c.payload());
+                connection.write(new S2CChannelStatsPacket(c.id(), false));
             }
         } else if (packet instanceof C2SOpenChannelPacket open) {
-            var channel = channels.get(open.id);
+            var channel = channels.get(open.id());
             if (channel != null) {
-                connection.write(new S2CChannelStatsPacket(open.id, true));
+                connection.write(new S2CChannelStatsPacket(open.id(), true));
                 channel.handle(new ClientConnectMessage(connection), connection);
             } else {
-                if (open.channelType == ChannelType.DATA_CHANNEL) {
-                    channel = addChannel(open.id, c -> {
+                if (open.channelType() == ChannelType.DATA_CHANNEL) {
+                    channel = addChannel(open.id(), c -> {
                         c.pipeline().addLast("locks", new ServerLockHandler());
                     });
-                    connection.write(new S2CChannelStatsPacket(open.id, true));
+                    connection.write(new S2CChannelStatsPacket(open.id(), true));
                     channel.handle(new ClientConnectMessage(connection), connection);
                 } else {
-                    log.error("Trying to open unsupported channel type! {} {} {}", open.id, connection, open.channelType);
-                    connection.write(new S2CChannelStatsPacket(open.id, false));
+                    log.error("Trying to open unsupported channel type! {} {} {}", open.id(), connection, open.channelType());
+                    connection.write(new S2CChannelStatsPacket(open.id(), false));
                 }
             }
         }

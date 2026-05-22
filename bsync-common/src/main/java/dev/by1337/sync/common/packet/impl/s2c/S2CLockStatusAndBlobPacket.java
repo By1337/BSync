@@ -1,5 +1,6 @@
 package dev.by1337.sync.common.packet.impl.s2c;
 
+import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
@@ -8,32 +9,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 
-public final class S2CLockStatusAndBlobPacket implements Packet {
-
-    public final Status status;
-    public final byte @Nullable [] blob;
-
-    public S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob) {
-        this.status = status;
-        this.blob = blob;
-    }
+public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob) implements Packet {
 
     public S2CLockStatusAndBlobPacket(ByteBuf buf, int protocolVersion) {
-        var v = buf.readByte();
-        if (v == 0) {
-            status = Status.ACCEPTED;
-        } else if (v == 1) {
-            status = Status.REJECTED;
-        } else {
-            throw new DecoderException("Unknown mail status " + v);
-        }
-        if (buf.readBoolean()) {
-            blob = new byte[buf.readInt()];
-            buf.readBytes(blob);
-        }else {
-            blob = null;
-        }
+        this(switch (buf.readByte()) {
+            case 0 -> Status.ACCEPTED;
+            case 1 -> Status.REJECTED;
+            default -> throw new DecoderException("Unknown lock status");
+        }, ByteBufCodecs.readOptional(buf, ByteBufCodecs::readByteArray));
     }
+
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         buf.writeByte(status.id);
@@ -68,13 +53,5 @@ public final class S2CLockStatusAndBlobPacket implements Packet {
         Status(byte id) {
             this.id = id;
         }
-    }
-
-    @Override
-    public String toString() {
-        return "S2CLockStatusAndBlobPacket{" +
-                "status=" + status +
-                ", blob=" + Arrays.toString(blob) +
-                '}';
     }
 }

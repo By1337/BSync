@@ -5,23 +5,14 @@ import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
-public final class C2SMailResponsePacket implements Packet {
-
-    public final Status status;
-
-    public C2SMailResponsePacket(Status status) {
-        this.status = status;
-    }
+public record C2SMailResponsePacket(Status status) implements Packet {
 
     public C2SMailResponsePacket(ByteBuf buf, int protocolVersion) {
-        var v = buf.readByte();
-        if (v == 0) {
-            status = Status.ACCEPTED;
-        } else if (v == 1) {
-            status = Status.REJECTED;
-        } else {
-            throw new DecoderException("Unknown mail status " + v);
-        }
+        this(switch (buf.readByte()) {
+            case 0 -> Status.ACCEPTED;
+            case 1 -> Status.REJECTED;
+            default -> throw new DecoderException("Unknown mail status");
+        });
     }
 
     @Override
@@ -37,6 +28,7 @@ public final class C2SMailResponsePacket implements Packet {
     public static C2SMailResponsePacket reject() {
         return new C2SMailResponsePacket(Status.REJECTED);
     }
+
     public static C2SMailResponsePacket accepted() {
         return new C2SMailResponsePacket(Status.ACCEPTED);
     }
@@ -44,6 +36,7 @@ public final class C2SMailResponsePacket implements Packet {
     public boolean isAccepted() {
         return status == Status.ACCEPTED;
     }
+
     public boolean isRejected() {
         return status == Status.REJECTED;
     }
@@ -58,12 +51,5 @@ public final class C2SMailResponsePacket implements Packet {
         Status(byte id) {
             this.id = id;
         }
-    }
-
-    @Override
-    public String toString() {
-        return "C2SMailResponsePacket{" +
-                "status=" + status +
-                '}';
     }
 }

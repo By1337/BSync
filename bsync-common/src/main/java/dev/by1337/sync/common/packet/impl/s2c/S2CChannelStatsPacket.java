@@ -5,18 +5,10 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public final class S2CChannelStatsPacket implements Packet {
-    public final String id;
-    public final boolean opened;
-
-    public S2CChannelStatsPacket(String id, boolean opened) {
-        this.id = id;
-        this.opened = opened;
-    }
+public record S2CChannelStatsPacket(String id, boolean opened) implements Packet {
 
     public S2CChannelStatsPacket(ByteBuf buf, int protocolVersion) {
-        id = ByteBufCodecs.readUtf8(buf);
-        opened = buf.readBoolean();
+        this(ByteBufCodecs.readUtf8(buf), buf.readBoolean());
     }
 
     @Override
@@ -28,13 +20,5 @@ public final class S2CChannelStatsPacket implements Packet {
     @Override
     public int getId() {
         return Packets.S2C_CHANNEL_STATUS_PACKET;
-    }
-
-    @Override
-    public String toString() {
-        return "S2CChannelStatsPacket{" +
-                "id='" + id + '\'' +
-                ", opened=" + opened +
-                '}';
     }
 }
