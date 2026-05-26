@@ -21,7 +21,7 @@ public class PacketDecoder extends ByteToMessageDecoder {
         if (buf.readableBytes() > 0) {
             throw new DecoderException("Packet " + v + " has more bytes than expected " + buf.readableBytes());
         }
-       // System.out.println(ctx.channel().remoteAddress() + " READ " + v);
+        System.out.println(ctx.channel().remoteAddress() + " READ " + v);
         out.add(v);
     }
 }

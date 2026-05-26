@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 public class ChannelManager {
@@ -26,6 +27,7 @@ public class ChannelManager {
     private final EventLoopWorkers workers;
     private final Map<String, ServerChannel> channels = new ConcurrentHashMap<>();
     private final DedicatedServer server;
+    private final LongAdder receivedPackets = new LongAdder();
 
     public ChannelManager(EventLoopWorkers workers, DedicatedServer server) {
         this.workers = workers;
@@ -48,7 +50,7 @@ public class ChannelManager {
     }
 
     public void onReceive(Packet packet, Connection connection) {
-      //  System.out.println("SERVER IN " + packet);
+        receivedPackets.increment();
         if (packet instanceof C2SCloseChannelPacket(String id1)) {
             var channel = channels.get(id1);
             if (channel != null) {
@@ -98,5 +100,9 @@ public class ChannelManager {
                 log.error("Failed to close channel {}", serverChannel.id(), e);
             }
         }
+    }
+
+    public long receivedPacketsSumThenReset() {
+        return receivedPackets.sumThenReset();
     }
 }

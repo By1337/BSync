@@ -1,8 +1,9 @@
 package dev.by1337.sync.bukkit.test;
 
 import dev.by1337.core.BCore;
-import dev.by1337.sync.client.channel.handler.ClientLocksHandler;
-import dev.by1337.sync.client.channel.handler.LockManager;
+import dev.by1337.sync.client.channel.handler.lock.ClientLocksHandler;
+import dev.by1337.sync.client.channel.handler.lock.LockManager;
+import dev.by1337.sync.client.channel.handler.lock.Locks;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -64,7 +65,7 @@ public class TestInvSync implements LockManager, Listener {
         var uuid = event.getPlayer().getUniqueId();
         locks.lockAndLoadData(uuid, (status, payload) -> {
             var pl = Bukkit.getPlayer(uuid);
-            if (status == ClientLocksHandler.LockStatus.FAILURE) {
+            if (status == Locks.LockStatus.FAILURE) {
                 if (pl != null) {
                     Bukkit.getScheduler().runTask(plugin, () -> pl.kick(Component.text("Не удалось загрузить игровые данные!")));
                     log.error("Failed to load inventory!");

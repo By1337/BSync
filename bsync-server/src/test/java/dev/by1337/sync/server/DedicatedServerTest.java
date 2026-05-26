@@ -1,19 +1,5 @@
 package dev.by1337.sync.server;
 
-import dev.by1337.sync.client.channel.handler.ClientLocksHandler;
-import dev.by1337.sync.client.config.ConnectionConfig;
-import dev.by1337.sync.client.network.ClientBootstrap;
-import dev.by1337.sync.client.network.Connection;
-import dev.by1337.sync.common.channel.ChannelType;
-import dev.by1337.sync.common.util.SingleSemaphore;
-import dev.by1337.sync.common.work.EventLoopWorkers;
-import org.junit.Test;
-
-import java.io.File;
-import java.util.Arrays;
-import java.util.UUID;
-import java.util.concurrent.locks.LockSupport;
-
 public class DedicatedServerTest {
 
 

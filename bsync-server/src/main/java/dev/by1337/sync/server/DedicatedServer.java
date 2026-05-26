@@ -2,10 +2,13 @@ package dev.by1337.sync.server;
 
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import dev.by1337.sync.server.channel.ChannelManager;
+import dev.by1337.sync.server.channel.handler.ServerLockHandler;
 import dev.by1337.sync.server.config.Config;
 import dev.by1337.sync.server.console.CommandManager;
 import dev.by1337.sync.server.console.TerminalReader;
 import dev.by1337.sync.server.database.Database;
+import dev.by1337.sync.server.metrics.MetricFormatter;
+import dev.by1337.sync.server.metrics.Metrics;
 import dev.by1337.sync.server.network.ClientList;
 import dev.by1337.sync.server.network.Connection;
 import dev.by1337.sync.server.network.ConnectionListener;
@@ -30,34 +33,66 @@ public class DedicatedServer {
     private volatile boolean running;
     private final CommandManager commandManager;
     private final ClientList clientList;
-    private final long millis;
+    private final long startMillis;
     private final ChannelManager channelManager;
     private Thread terminalThread;
     private final Database database;
+    private final boolean badShutdown;
 
     public DedicatedServer() {
         this(-1);
     }
+
     public DedicatedServer(int testPort) {
+        File lock = new File("./server.lock");
+        badShutdown = lock.exists();
+        if (badShutdown) {
+            log.warn("Unsafe shutdown detected!");
+            new File("./server.lock").delete();
+        }
+        try {
+            if (!new File("./server.lock").createNewFile()){
+                throw new IOException("Failed to create server.lock!");
+            }
+        } catch (IOException e) {
+            new File("./server.lock").delete();
+            throw new RuntimeException("Failed to create lock file!", e);
+        }
+
         config = Config.DECODER.decode(YamlMap.load(saveResourceToFile("config.yml")).get()).getOrThrow();
-        if (testPort != -1){
+        if (testPort != -1) {
             config.tcp_port = testPort;
         }
         database = new Database(config.database_config);
         clientList = new ClientList();
         connectionListener = new ConnectionListener(this);
-        channelManager = new ChannelManager(new EventLoopWorkers("server-worker-%d", 4), this);
+        var workers = new EventLoopWorkers("server-worker-%d", 4);
+        channelManager = new ChannelManager(workers, this);
         running = true;
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
         commandManager = new CommandManager();
-        millis = System.currentTimeMillis();
+        startMillis = System.currentTimeMillis();
+
+        workers.forEach(worker -> Metrics.METRICS.create(worker.name(), MetricFormatter.nanos(), worker::busyNanosThenReset));
+        Metrics.METRICS.create("in-bound", MetricFormatter.number(), channelManager::receivedPacketsSumThenReset);
+
+        Thread.ofVirtual().start(() -> {
+            while (true) {
+                Metrics.METRICS.dump(log);
+                try {
+                    Thread.sleep(10_000);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        });
     }
 
     public long startMillis() {
-        return millis;
+        return startMillis;
     }
 
-    public void readTerminal(){
+    public void readTerminal() {
         if (terminalThread != null) throw new IllegalStateException("Terminal thread has already been started");
         terminalThread = Thread.currentThread();
         TerminalReader terminalReader = new TerminalReader(this, commandManager);
@@ -71,17 +106,32 @@ public class DedicatedServer {
     public void shutdown() {
         if (!running) return;
         running = false;
-        channelManager.close();
-        connectionListener.stop();
+        safe(channelManager::close);
+        safe(connectionListener::stop);
+        try {
+            database.close();
+        } catch (Exception e) {
+            log.error("Failed to close database connection!", e);
+        }
+        new File("./server.lock").delete();
+
         if (terminalThread != null) {
             terminalThread.interrupt();
         }
-        try {
-            database.close();
-        }catch (Exception e){
-            log.error("Failed to close database connection!", e);
-        }
         System.exit(1);
+    }
+
+    private void safe(ServerLockHandler.ERunnable s) {
+        try {
+            s.run();
+        } catch (Exception e) {
+            log.error("Failed to safe run!", e);
+        }
+    }
+
+    @FunctionalInterface
+    public interface ERunnable {
+        void run() throws Exception;
     }
 
     public Config config() {
@@ -95,6 +145,7 @@ public class DedicatedServer {
     public CommandManager commandManager() {
         return commandManager;
     }
+
     public ClientList clientList() {
         return clientList;
     }
@@ -114,6 +165,14 @@ public class DedicatedServer {
 
     public Database database() {
         return database;
+    }
+
+    public boolean badShutdown() {
+        return badShutdown;
+    }
+
+    public long uptimeMillis() {
+        return System.currentTimeMillis() - startMillis;
     }
 
     private @Nullable InputStream getResource(@NotNull String filename) {

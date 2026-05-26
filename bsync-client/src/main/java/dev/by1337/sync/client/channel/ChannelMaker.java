@@ -1,7 +1,7 @@
 package dev.by1337.sync.client.channel;
 
-import dev.by1337.sync.client.channel.handler.ClientLocksHandler;
-import dev.by1337.sync.client.channel.handler.LockManager;
+import dev.by1337.sync.client.channel.handler.lock.ClientLocksHandler;
+import dev.by1337.sync.client.channel.handler.lock.LockManager;
 import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.channel.handler.RequestsHandler;

@@ -1,7 +1,7 @@
 package dev.by1337.sync.common.work;
 
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 public class EventLoopWorkers {
     private final EventLoopWorker[] workers;
@@ -16,5 +16,11 @@ public class EventLoopWorkers {
 
     public EventLoopWorker getNext() {
         return workers[counter.getAndIncrement() % workers.length];
+    }
+
+    public void forEach(Consumer<EventLoopWorker> c) {
+        for (EventLoopWorker worker : workers) {
+            c.accept(worker);
+        }
     }
 }

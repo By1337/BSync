@@ -111,6 +111,12 @@ public class ServerLockHandler implements ChannelHandler {
             case IncomingRequest request -> {
                 ChannelMessage payload = request.payload();
                 if (payload instanceof C2SLockAndGetBlobRequestPacket r) {
+                    // todo badShutdown тут не играет роли пока не научимся нормально закрывать соединения с серверной стороны
+                    if (!r.recovery() && /*server.badShutdown() &&*/ server.uptimeMillis() < 3_000) {
+                        log.warn("Guard time for key {}", r.key());
+                        pipeline.schedule(msg, ctx.connection(), 500);
+                        return;
+                    }
                     var lock = lockMap.tryLock(r.key(), ctx.connection().transport());
                     if (lock == null) {
                         if (++request.counter >= 10) {

@@ -90,6 +90,7 @@ public class Connection implements SocketConnection {
                 //пупупу хзхз
                 if (stats.opened()) {
                     channel.onRegister();
+                    channel.onChannelActive();
                 } else {
                     channel.onChannelInactive();
                     log.error("Channel {} has been closed by server. Try to reopen", stats.id());
@@ -137,7 +138,7 @@ public class Connection implements SocketConnection {
 
     private void onChannelActive() {
         for (ClientChannel channel : List.copyOf(channels.values())) {
-            channel.onChannelInactive();
+            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
         }
     }
 

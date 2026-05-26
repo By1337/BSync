@@ -28,7 +28,6 @@ public class RequestsHandler implements ChannelHandler {
     private final PriorityQueue<RequestHolder> requestsQueue = new PriorityQueue<>(256);
     private int requestId;
     private EventLoopWorker eventLoop;
-    private boolean requestsCleanupTask = false;
     private boolean closing;
 
     @Override
@@ -38,6 +37,32 @@ public class RequestsHandler implements ChannelHandler {
         }
         this.eventLoop = runtime.eventLoop();
         this.log = runtime.logger();
+        requestsTimeOuter();
+    }
+
+    private void requestsTimeOuter() {
+        if (closing) return;
+        if (!requests.isEmpty()) {
+            long now = System.currentTimeMillis();
+            while (true) {
+                var request = requestsQueue.peek();
+                if (request == null || request.timeoutAt > now) break;
+                requestsQueue.poll();
+                if (requests.remove(request.id) != null) {
+                    try {
+                        request.callback.accept(null, null);
+                    } catch (Exception err) {
+                        log.error("Failed to accept response", err);
+                    }
+                }
+            }
+        }
+        if (!requestsQueue.isEmpty()) {
+            long delay = Math.max(1, requestsQueue.peek().timeoutAt - System.currentTimeMillis());
+            eventLoop.schedule(this::requestsTimeOuter, Math.min(250, delay));
+        } else {
+            eventLoop.schedule(this::requestsTimeOuter, 250);
+        }
     }
 
     @Override
@@ -51,7 +76,6 @@ public class RequestsHandler implements ChannelHandler {
                 }
             } else {
                 ctx.connection().write(new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet()));
-                requestsTimeOuter();
             }
         } else if (msg instanceof ResponsePacket r) {
             var v = requests.remove(r.uid());
@@ -121,29 +145,6 @@ public class RequestsHandler implements ChannelHandler {
         return new RequestMsg<>(packet, consumer, timeoutMs);
     }
 
-    private void requestsTimeOuter() {
-        if (requestsCleanupTask) return;
-        requestsCleanupTask = true;
-        long now = System.currentTimeMillis();
-        while (true) {
-            var request = requestsQueue.peek();
-            if (request == null || request.timeoutAt > now) break;
-            requestsQueue.poll();
-            if (requests.remove(request.id) != null) {
-                try {
-                    request.callback.accept(null, null);
-                } catch (Exception err) {
-                    log.error("Failed to accept response", err);
-                }
-            }
-        }
-        if (!requestsQueue.isEmpty()) {
-            long delay = Math.max(1, requestsQueue.peek().timeoutAt - now);
-            eventLoop.schedule(this::requestsTimeOuter, Math.min(250, delay));
-        } else {
-            requestsCleanupTask = false;
-        }
-    }
 
     public static class RequestHolder implements Comparable<RequestHolder> {
         private final int id;

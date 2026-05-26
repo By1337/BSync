@@ -9,16 +9,17 @@ import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public record C2SLockAndGetBlobRequestPacket(UUID key, int version) implements Packet, ExpectsResponse<S2CLockStatusAndBlobPacket> {
+public record C2SLockAndGetBlobRequestPacket(UUID key, int version, boolean recovery) implements Packet, ExpectsResponse<S2CLockStatusAndBlobPacket> {
 
     public C2SLockAndGetBlobRequestPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUUID(buf), buf.readInt());
+        this(ByteBufCodecs.readUUID(buf), buf.readInt(), buf.readBoolean());
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUUID(buf, key);
         buf.writeInt(version);
+        buf.writeBoolean(recovery);
     }
 
     @Override

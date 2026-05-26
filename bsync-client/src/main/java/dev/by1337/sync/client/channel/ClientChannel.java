@@ -4,7 +4,6 @@ import dev.by1337.sync.client.channel.status.ChannelActiveMessage;
 import dev.by1337.sync.client.channel.status.ChannelInactiveMessage;
 import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
-import dev.by1337.sync.common.channel.handler.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
@@ -14,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Connection {
     private final Logger log;
@@ -51,7 +51,10 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         return connection;
     }
 
+    private final AtomicBoolean isRegistered = new AtomicBoolean();
+
     public void onRegister() {
+        if (!isRegistered.compareAndSet(false, true)) return;
         var self = this;
         pipeline.registerAll(new ClientChannelRuntime() {
             @Override
@@ -80,16 +83,20 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         return registered;
     }
 
+    private final AtomicBoolean channelActive = new AtomicBoolean();
+
     public void onChannelActive() {
+        if (!channelActive.compareAndSet(false, true)) return;
         pipeline.execute(ChannelActiveMessage.INSTANCE, this);
     }
 
     public void onChannelInactive() {
+        if (!channelActive.compareAndSet(true, false)) return;
         pipeline.execute(ChannelInactiveMessage.INSTANCE, this);
     }
 
     public CompletableFuture<Void> close() {
-       return pipeline.closeAll();
+        return pipeline.closeAll();
     }
 
     public String id() {

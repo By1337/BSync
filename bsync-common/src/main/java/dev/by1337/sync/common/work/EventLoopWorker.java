@@ -7,25 +7,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.PriorityQueue;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
 public final class EventLoopWorker {
     private static final Logger log = LoggerFactory.getLogger(EventLoopWorker.class);
-   private final MpscArrayQueue<Runnable> queue = new MpscArrayQueue<>(4096);
-  //  private final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
+    private final MpscArrayQueue<Runnable> queue = new MpscArrayQueue<>(4096);
     private final PriorityQueue<ScheduledTask> scheduled = new PriorityQueue<>(256);
     private final Thread thread;
+    private final String name;
+    private final LongAdder busyNanos = new LongAdder();
 
     public EventLoopWorker(String name) {
+        this.name = name;
         this.thread = new Thread(this::runLoop, name);
         this.thread.start();
     }
 
     public void execute(Runnable runnable) {
-     //   System.out.println("offer " + runnable);
+        if (isWorkerThread()){
+            runnable.run();
+            return;
+        }
         if (!queue.offer(runnable)) {
             log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
         }
@@ -33,7 +38,17 @@ public final class EventLoopWorker {
     }
 
     public void schedule(Runnable runnable, long ms) {
+        if (ms <= 0){
+            if (!queue.offer(runnable)) {
+                log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
+            }
+            return;
+        }
         execute(() -> scheduled.add(new ScheduledTask(System.nanoTime() + (ms * 1_000_000), runnable)));
+    }
+
+    public int size() {
+        return queue.size();
     }
 
     private void runLoop() {
@@ -59,11 +74,21 @@ public final class EventLoopWorker {
             }
 
             scheduled.poll();
+            runTask(task.task);
+        }
+    }
 
-            try {
-                task.task.run();
-            } catch (Throwable t) {
-                log.error("Error", t);
+    private void runTask(Runnable r) {
+        long start = System.nanoTime();
+        try {
+            r.run();
+        } catch (Exception e) {
+            log.error("Error while executing task", e);
+        } finally {
+            long time = System.nanoTime() - start;
+            busyNanos.add(time);
+            if (time > 10_000_000){
+                log.warn("Task {} took {}ms",r, TimeUnit.NANOSECONDS.toMillis(time));
             }
         }
     }
@@ -71,9 +96,9 @@ public final class EventLoopWorker {
     private void runTasks(Supplier<? extends @Nullable Runnable> queue) {
         Runnable task;
         while ((task = queue.get()) != null) {
-           // System.out.println("run " + task);
+            // System.out.println("run " + task);
             try {
-                task.run();
+                runTask(task);
             } catch (Throwable t) {
                 log.error("Error while executing task", t);
             }
@@ -83,8 +108,17 @@ public final class EventLoopWorker {
     public boolean isWorkerThread() {
         return thread == Thread.currentThread();
     }
-    public void assertThread(){
+
+    public void assertThread() {
         if (!isWorkerThread()) throw new IllegalStateException("Not a worker thread");
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public long busyNanosThenReset() {
+        return busyNanos.sumThenReset();
     }
 
     public static class ScheduledTask implements Runnable, Comparable<ScheduledTask> {

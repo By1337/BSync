@@ -19,7 +19,7 @@ public class PacketsTest {
     public void readWriteTest(){
         assertReadWrite(new C2SCloseChannelPacket("test id\0"));
         assertReadWrite(new C2SHelloPacket(775, "test \0id"));
-        assertReadWrite(new C2SLockAndGetBlobRequestPacket(UUID.randomUUID(), 775));
+        assertReadWrite(new C2SLockAndGetBlobRequestPacket(UUID.randomUUID(), 775, true));
         assertReadWrite(new C2SLoginPacket(new byte[]{13, 37}));
         assertReadWrite(new C2SMailResponsePacket(C2SMailResponsePacket.Status.ACCEPTED, 775));
         assertReadWrite(new C2SOpenChannelPacket("id", ChannelType.DATA_CHANNEL));
@@ -40,7 +40,7 @@ public class PacketsTest {
         assertReadWrite(new RequestPacket(775, new S2CPostLoginPacket()));
         assertReadWrite(new ResponsePacket(775, new S2CPostLoginPacket()));
         assertReadWrite(new C2SFlushBlobPacket(UUID.randomUUID(), 775, 1337, new byte[]{13,37}));
-        assertReadWrite(new S2CFlushResponsePacket(false));
+        assertReadWrite(new S2CFlushResponsePacket(true));
     }
 
     private <T extends Packet> void  assertReadWrite(T packet){
