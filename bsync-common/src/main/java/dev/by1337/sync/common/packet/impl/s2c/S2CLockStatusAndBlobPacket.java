@@ -73,4 +73,14 @@ public record S2CLockStatusAndBlobPacket(Status status, byte @Nullable [] blob, 
     public int hashCode() {
         return Objects.hash(status, Arrays.hashCode(blob), token, version);
     }
+
+    @Override
+    public String toString() {
+        return "S2CLockStatusAndBlobPacket{" +
+                "status=" + status +
+                ", blob=" + (blob == null ? 0 : blob.length) + " bytes..." +
+                ", token=" + token +
+                ", version=" + version +
+                '}';
+    }
 }

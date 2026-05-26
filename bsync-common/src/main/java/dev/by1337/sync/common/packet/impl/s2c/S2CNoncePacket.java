@@ -37,4 +37,11 @@ public record S2CNoncePacket(byte[] nonce) implements Packet {
     public int hashCode() {
         return Arrays.hashCode(nonce);
     }
+
+    @Override
+    public String toString() {
+        return "S2CNoncePacket{" +
+                "nonce=" + (nonce == null ? 0 : nonce.length) + " bytes..." +
+                '}';
+    }
 }

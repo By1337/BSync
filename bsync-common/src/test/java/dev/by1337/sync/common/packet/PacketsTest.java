@@ -39,6 +39,8 @@ public class PacketsTest {
         assertReadWrite(new PongPacket(System.currentTimeMillis()));
         assertReadWrite(new RequestPacket(775, new S2CPostLoginPacket()));
         assertReadWrite(new ResponsePacket(775, new S2CPostLoginPacket()));
+        assertReadWrite(new C2SFlushBlobPacket(UUID.randomUUID(), 775, 1337, new byte[]{13,37}));
+        assertReadWrite(new S2CFlushResponsePacket(false));
     }
 
     private <T extends Packet> void  assertReadWrite(T packet){

@@ -37,4 +37,11 @@ public record C2SLoginPacket(byte[] payload) implements Packet {
     public int hashCode() {
         return Arrays.hashCode(payload);
     }
+
+    @Override
+    public String toString() {
+        return "C2SLoginPacket{" +
+                "payload=" + (payload == null ? 0 : payload.length) + " bytes..." +
+                '}';
+    }
 }

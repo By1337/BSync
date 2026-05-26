@@ -8,5 +8,5 @@ import java.util.function.Consumer;
 
 @FunctionalInterface
 public interface PacketCallback<T extends Packet> {
-    void accept(@Nullable T packet, Connection connection);
+    void accept(@Nullable T packet, @Nullable Connection connection);
 }

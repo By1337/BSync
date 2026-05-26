@@ -31,7 +31,6 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         this.eventLoop = eventLoop;
         pipeline = new Pipeline(eventLoop);
         this.channelType = channelType;
-        pipeline.addLast("requests", new RequestsHandler());
     }
 
     public Pipeline pipeline() {

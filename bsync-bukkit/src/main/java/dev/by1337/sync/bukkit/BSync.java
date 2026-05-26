@@ -1,7 +1,8 @@
 package dev.by1337.sync.bukkit;
 
 import dev.by1337.core.util.io.ResourceUtil;
-import dev.by1337.sync.bukkit.test.TestInvSyncHandler;
+import dev.by1337.sync.bukkit.test.TestInvSync;
+import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.config.Config;
 import dev.by1337.sync.client.config.ConnectionConfig;
 import dev.by1337.sync.client.network.ClientBootstrap;
@@ -9,8 +10,9 @@ import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.common.work.EventLoopWorkers;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -20,9 +22,13 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.LockSupport;
 
 public class BSync extends JavaPlugin {
+    private static final Logger log = LoggerFactory.getLogger(BSync.class);
     private static File homeDir;
     private static Config config;
     private static Map<String, Connection> connections = new HashMap<>();
@@ -82,16 +88,20 @@ public class BSync extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        getConnection("example").addChannel("test-inv", ChannelType.DATA_CHANNEL, channel -> {
-            channel.pipeline().addLast("invs", new TestInvSyncHandler(this));
-        });
+        // ChannelMaker.createDataChannel(getConnection("example"), "test-inv", locks -> new TestInvSync(locks, this));
         //Player pl;
         //pl.getInventory().clear();
     }
 
     @Override
     public void onDisable() {
-        connections.values().forEach(Connection::close);
+        connections.values().forEach(c -> {
+            try {
+                c.close().get(15, TimeUnit.SECONDS);
+            } catch (ExecutionException | InterruptedException | TimeoutException e) {
+                log.error("Failed to close connection", e);
+            }
+        });
         connections.clear();
     }
 

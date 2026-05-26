@@ -1,6 +1,9 @@
 package dev.by1337.sync.server.config;
 
 import dev.by1337.sync.common.security.Ed25519;
+import dev.by1337.sync.server.database.Database;
+import dev.by1337.yaml.decoder.RecordYamlDecoder;
+import dev.by1337.yaml.decoder.YamlDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,14 +16,25 @@ import java.util.Collections;
 import java.util.List;
 
 public class Config {
-
+    public static final YamlDecoder<Config> DECODER = RecordYamlDecoder.mapOf(
+            Config::new,
+            YamlDecoder.INT.fieldOf("port"),
+            Database.DatabaseConfig.DECODER.fieldOf("database")
+    );
     private static final Logger log = LoggerFactory.getLogger(Config.class);
     private List<PublicKey> authorized_keys;
     public int tcp_port = 8013;
+    public final Database.DatabaseConfig database_config;
 
+    public Config(int tcp_port, Database.DatabaseConfig database_config) {
+        this.tcp_port = tcp_port;
+        this.database_config = database_config;
+        reloadKeys();
+    }
 
     public Config() {
         reloadKeys();
+        database_config = null;
     }
 
     public void reloadKeys() {

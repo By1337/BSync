@@ -7,6 +7,7 @@ import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
 import dev.by1337.sync.common.work.EventLoopWorkers;
+import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.handler.ServerLockHandler;
 import dev.by1337.sync.server.channel.messages.ClientConnectMessage;
 import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
@@ -17,15 +18,18 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class ChannelManager {
     private static final Logger log = LoggerFactory.getLogger(ChannelManager.class);
     private final EventLoopWorkers workers;
     private final Map<String, ServerChannel> channels = new ConcurrentHashMap<>();
+    private final DedicatedServer server;
 
-    public ChannelManager(EventLoopWorkers workers) {
+    public ChannelManager(EventLoopWorkers workers, DedicatedServer server) {
         this.workers = workers;
+        this.server = server;
     }
 
     public ServerChannel addChannel(String id, Consumer<ServerChannel> init) {
@@ -34,7 +38,8 @@ public class ChannelManager {
         }
         ServerChannel serverChannel = new ServerChannel(
                 id,
-                workers.getNext()
+                workers.getNext(),
+                server
         );
         init.accept(serverChannel);
         channels.put(id, serverChannel);
@@ -44,36 +49,36 @@ public class ChannelManager {
 
     public void onReceive(Packet packet, Connection connection) {
       //  System.out.println("SERVER IN " + packet);
-        if (packet instanceof C2SCloseChannelPacket close) {
-            var channel = channels.get(close.id());
+        if (packet instanceof C2SCloseChannelPacket(String id1)) {
+            var channel = channels.get(id1);
             if (channel != null) {
                 channel.handle(new ClientDisconnectMessage(connection), connection);
             } else {
-                log.error("Try to close unknown channel {} {}", close.id(), connection);
+                log.error("Try to close unknown channel {} {}", id1, connection);
             }
-        } else if (packet instanceof ChanneledPacket c) {
-            var channel = channels.get(c.id());
+        } else if (packet instanceof ChanneledPacket(String id, Packet payload)) {
+            var channel = channels.get(id);
             if (channel != null) {
-                channel.handle(c.payload(), connection);
+                channel.handle(payload, connection);
             } else {
-                log.error("Received packet for unknown channel {} {} {}", c.id(), connection, c.payload());
-                connection.write(new S2CChannelStatsPacket(c.id(), false));
+                log.error("Received packet for unknown channel {} {} {}", id, connection, payload);
+                connection.write(new S2CChannelStatsPacket(id, false));
             }
-        } else if (packet instanceof C2SOpenChannelPacket open) {
-            var channel = channels.get(open.id());
+        } else if (packet instanceof C2SOpenChannelPacket(String id, ChannelType channelType)) {
+            var channel = channels.get(id);
             if (channel != null) {
-                connection.write(new S2CChannelStatsPacket(open.id(), true));
+                connection.write(new S2CChannelStatsPacket(id, true));
                 channel.handle(new ClientConnectMessage(connection), connection);
             } else {
-                if (open.channelType() == ChannelType.DATA_CHANNEL) {
-                    channel = addChannel(open.id(), c -> {
+                if (channelType == ChannelType.DATA_CHANNEL) {
+                    channel = addChannel(id, c -> {
                         c.pipeline().addLast("locks", new ServerLockHandler());
                     });
-                    connection.write(new S2CChannelStatsPacket(open.id(), true));
+                    connection.write(new S2CChannelStatsPacket(id, true));
                     channel.handle(new ClientConnectMessage(connection), connection);
                 } else {
-                    log.error("Trying to open unsupported channel type! {} {} {}", open.id(), connection, open.channelType());
-                    connection.write(new S2CChannelStatsPacket(open.id(), false));
+                    log.error("Trying to open unsupported channel type! {} {} {}", id, connection, channelType);
+                    connection.write(new S2CChannelStatsPacket(id, false));
                 }
             }
         }
@@ -82,6 +87,16 @@ public class ChannelManager {
     public void onDisconnect(Connection connection) {
         for (ServerChannel serverChannel : List.copyOf(channels.values())) {
             serverChannel.handle(new ClientDisconnectMessage(connection), connection);
+        }
+    }
+
+    public void close() {
+        for (ServerChannel serverChannel : List.copyOf(channels.values())) {
+            try {
+                serverChannel.pipeline().closeAll().get(30, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.error("Failed to close channel {}", serverChannel.id(), e);
+            }
         }
     }
 }

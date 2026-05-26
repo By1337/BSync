@@ -8,6 +8,7 @@ import dev.by1337.sync.common.packet.impl.c2s.C2SLoginPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.PrivateKey;
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -76,9 +78,6 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         }
     }
 
-    public ChannelFuture writeAndFlush(Packet packet) {
-        return channel.writeAndFlush(packet);
-    }
     public void send(Packet packet) {
         channel.write(packet);
         if (flushScheduled.compareAndSet(false, true)) {
@@ -128,13 +127,28 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         }
     }
 
-    public void close() {
+    public CompletableFuture<Void> close() {
+        var future = new CompletableFuture<Void>();
+
         var c = channel;
-        if (c != null) {
-            c.eventLoop().submit(() -> {
-                c.flush();
-                c.close();
-            });
+        if (c == null) {
+            future.complete(null);
+            return future;
         }
+
+        c.eventLoop().execute(() -> {
+            c.writeAndFlush(Unpooled.EMPTY_BUFFER)
+                    .addListener(flushFuture -> {
+                        c.close().addListener(closeFuture -> {
+                            if (closeFuture.isSuccess()) {
+                                future.complete(null);
+                            } else {
+                                future.completeExceptionally(closeFuture.cause());
+                            }
+                        });
+                    });
+        });
+
+        return future;
     }
 }

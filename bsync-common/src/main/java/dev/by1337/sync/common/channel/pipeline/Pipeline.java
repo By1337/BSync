@@ -58,11 +58,13 @@ public class Pipeline {
                     handler.handler.close();
                 }
             } finally {
-                future.complete(null);
+                //сами handler'ы могут ложить новые таски в eventLoop, отпустим future после тех тасков
+                eventLoop.execute(() -> future.complete(null));
             }
         });
         return future;
     }
+
 
     private static class ChannelContextImpl implements ChannelContext, AutoCloseable {
         private final Connection connection;

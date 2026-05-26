@@ -31,6 +31,10 @@ public class Packets {
     public static final int S2C_CHANNEL_STATUS_PACKET = 19;
     public static final int C2S_UNLOCK_PACKET = 20;
     public static final int C2S_RENEW_LOCK_PACKET = 21;
+    public static final int C2S_FLUSH_BLOB_REQUEST = 22;
+    public static final int S2C_FLUSH_ACCEPT_RESPONSE = 23;
+    public static final int ACK_REQUEST = 24;
+    public static final int ACK_RESPONSE = 25;
 
 
     public static Packet read(ByteBuf buf, int protocolVersion) throws DecoderException {
@@ -59,6 +63,10 @@ public class Packets {
             case S2C_CHANNEL_STATUS_PACKET -> new S2CChannelStatsPacket(buf, protocolVersion);
             case C2S_UNLOCK_PACKET -> new C2SUnlockPacket(buf, protocolVersion);
             case C2S_RENEW_LOCK_PACKET -> new C2SRenewLockPacket(buf, protocolVersion);
+            case C2S_FLUSH_BLOB_REQUEST -> new C2SFlushBlobPacket(buf, protocolVersion);
+            case S2C_FLUSH_ACCEPT_RESPONSE -> new S2CFlushResponsePacket(buf, protocolVersion);
+            case ACK_REQUEST -> new AckRequest(buf, protocolVersion);
+            case ACK_RESPONSE -> AckRequest.AckResponse.INSTANCE;
             default -> throw new DecoderException("Invalid packet id " + id);
         };
     }

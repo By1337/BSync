@@ -5,17 +5,22 @@ import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.pipeline.ChannelContext;
 import dev.by1337.sync.common.channel.pipeline.ChannelHandler;
 import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
-import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.channel.pipeline.Connection;
 import dev.by1337.sync.common.packet.ExpectsResponse;
+import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.impl.AckRequest;
 import dev.by1337.sync.common.packet.impl.RequestPacket;
 import dev.by1337.sync.common.packet.impl.ResponsePacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.PriorityQueue;
+import java.util.function.BiConsumer;
 
 public class RequestsHandler implements ChannelHandler {
     private Logger log = DEFAULT_LOGGER;
@@ -24,6 +29,7 @@ public class RequestsHandler implements ChannelHandler {
     private int requestId;
     private EventLoopWorker eventLoop;
     private boolean requestsCleanupTask = false;
+    private boolean closing;
 
     @Override
     public void init(ChannelRuntime runtime) {
@@ -37,8 +43,16 @@ public class RequestsHandler implements ChannelHandler {
     @Override
     public void handle(ChannelContext ctx, ChannelMessage msg) {
         if (msg instanceof RequestMsg<?> r) {
-            ctx.connection().write(new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet()));
-            requestsTimeOuter();
+            if (closing) {
+                try {
+                    r.consumer().accept(null, null);
+                } catch (Exception e) {
+                    log.error("Failed to accept empty response cuz closing", e);
+                }
+            } else {
+                ctx.connection().write(new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet()));
+                requestsTimeOuter();
+            }
         } else if (msg instanceof ResponsePacket r) {
             var v = requests.remove(r.uid());
             if (v != null) {
@@ -58,11 +72,16 @@ public class RequestsHandler implements ChannelHandler {
                 }
             }
         } else if (msg instanceof RequestPacket r) {
-            ctx.pipeline().execute(
-                    new IncomingRequest(r.payload(),
-                            result -> ctx.connection().write(new ResponsePacket(r.uid(), result))),
-                    ctx.connection()
-            );
+            if (r.payload() instanceof AckRequest ack) {
+                ctx.pipeline().execute(ack.payload(), ctx.connection());
+                ctx.connection().write(new ResponsePacket(r.uid(), AckRequest.AckResponse.INSTANCE));
+            } else {
+                ctx.pipeline().execute(
+                        new IncomingRequest(r.payload(),
+                                result -> ctx.connection().write(new ResponsePacket(r.uid(), result))),
+                        ctx.connection()
+                );
+            }
         } else {
             ctx.fire(msg);
         }
@@ -70,11 +89,12 @@ public class RequestsHandler implements ChannelHandler {
 
     @Override
     public void close() {
+        closing = true;
         requests.values().forEach(v -> {
             try {
                 v.callback.accept(null, null);
             } catch (Exception e) {
-                log.error("Failed to accept response", e);
+                log.error("Failed to accept empty response cuz closing", e);
             }
         });
         requestsQueue.clear();
@@ -89,6 +109,14 @@ public class RequestsHandler implements ChannelHandler {
         return v;
     }
 
+    @Contract(pure = true)
+    public static ChannelMessage withAck(Packet packet, BiConsumer<@NotNull Boolean, @Nullable Connection> c, long timeoutMs) {
+        return new RequestMsg<>(new AckRequest(packet), ((ack, connection) -> {
+            c.accept(ack != null, connection);
+        }), timeoutMs);
+    }
+
+    @Contract(pure = true)
     public static <E extends Packet, T extends ExpectsResponse<E> & Packet> RequestMsg<E> request(T packet, PacketCallback<E> consumer, long timeoutMs) {
         return new RequestMsg<>(packet, consumer, timeoutMs);
     }

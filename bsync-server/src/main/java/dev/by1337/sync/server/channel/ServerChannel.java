@@ -7,6 +7,7 @@ import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
+import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.network.Connection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,12 +17,14 @@ public class ServerChannel {
     private final String id;
     private final EventLoopWorker eventLoop;
     private final Pipeline pipeline;
+    private final DedicatedServer server;
 
-    public ServerChannel(String id, EventLoopWorker eventLoop) {
+    public ServerChannel(String id, EventLoopWorker eventLoop, DedicatedServer server) {
         this.id = id;
         this.eventLoop = eventLoop;
         log = LoggerFactory.getLogger(id + "|Channel");
         pipeline = new Pipeline(eventLoop);
+        this.server = server;
         pipeline.addLast("requests", new RequestsHandler());
     }
 
@@ -44,6 +47,11 @@ public class ServerChannel {
             public SocketConnection transport() {
                 return connection;
             }
+
+            @Override
+            public String toString() {
+                return connection.toString();
+            }
         };
     }
 
@@ -53,6 +61,16 @@ public class ServerChannel {
             @Override
             public dev.by1337.sync.common.channel.pipeline.Connection lookup(SocketConnection connection) {
                 return self.lookup(connection);
+            }
+
+            @Override
+            public DedicatedServer server() {
+                return self.server;
+            }
+
+            @Override
+            public ServerChannel channel() {
+                return self;
             }
 
             @Override

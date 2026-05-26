@@ -43,4 +43,13 @@ public record C2SUnlockAndFlushBlobPacket(UUID key, byte @Nullable [] blob, int 
     public int hashCode() {
         return Objects.hash(key, Arrays.hashCode(blob), token);
     }
+
+    @Override
+    public String toString() {
+        return "C2SUnlockAndFlushBlobPacket{" +
+                "key=" + key +
+                ", blob=" + (blob == null ? 0 : blob.length) + " bytes..." +
+                ", token=" + token +
+                '}';
+    }
 }

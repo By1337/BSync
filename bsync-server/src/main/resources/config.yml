@@ -1,0 +1,9 @@
+port: 8013
+
+database:
+  type: mariadb # mysql, mariadb
+  user: root
+  password: password
+  host: localhost
+  port: 3306
+  database: 'mydatabase'

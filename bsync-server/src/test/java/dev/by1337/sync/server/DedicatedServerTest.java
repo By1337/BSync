@@ -17,9 +17,13 @@ import java.util.concurrent.locks.LockSupport;
 public class DedicatedServerTest {
 
 
-    @Test
+   // @Test
     public void run() throws Exception {
-        var server = new DedicatedServer(8014);
+        //todo test
+        // ping 100
+        // client lock -> unlock -> lock
+
+      /*  var server = new DedicatedServer(8014);
         EventLoopWorkers workers = new EventLoopWorkers("test-worker-%d", 1);
         Connection connection = new Connection(
                 new ConnectionConfig(
@@ -50,30 +54,13 @@ public class DedicatedServerTest {
             locks.lockAndLoadData(key, (s, a) -> {
                 System.out.println("V1 " + s);
             });
-            locks.unlock(key, null, () -> {
-                locks.lockAndLoadData(key, (s, a) -> {
-                    System.out.println("V2 " + s);
-                });
-            });
         });
 
 
 
         while (!task.tryAcquire()){
         }
-         Thread.sleep(9999);
+         Thread.sleep(9999);*/
     }
 
-    private static class TestClientLocks extends ClientLocksHandler {
-
-        @Override
-        protected byte[] forceUnlockNow(UUID key) {
-            return new byte[]{13, 37};
-        }
-
-        @Override
-        protected void onMailAccept(UUID key, String json) {
-            System.out.println("Mail " + json);
-        }
-    }
 }

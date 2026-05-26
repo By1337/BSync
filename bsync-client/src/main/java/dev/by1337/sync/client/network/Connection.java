@@ -17,12 +17,12 @@ import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class Connection implements SocketConnection {
@@ -32,7 +32,7 @@ public class Connection implements SocketConnection {
     private final EventLoopWorkers workers;
     private final String id;
     private final ClientBootstrap bootstrap;
-    private volatile boolean closed = false;
+    private final AtomicBoolean closing = new AtomicBoolean();
     private ConnectionHandler connection;
     private final Map<String, ClientChannel> channels = new ConcurrentHashMap<>();
     private long ping = 0;
@@ -66,7 +66,7 @@ public class Connection implements SocketConnection {
     }
 
     public ClientChannel addChannel(String id, ChannelType channelType, Consumer<ClientChannel> init) {
-        if (closed) throw new IllegalStateException("Connection is closed");
+        if (closing.get()) throw new IllegalStateException("Connection is closed");
         if (channels.containsKey(id)) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
@@ -111,13 +111,11 @@ public class Connection implements SocketConnection {
         } else {
             log.error("Packet received unknown packet {}", packet);
         }
-
     }
-
 
     void onClosed(ConnectionHandler connection) {
         this.connection = null;
-        if (closed) return;
+        if (closing.get()) return;
         for (ClientChannel channel : List.copyOf(channels.values())) {
             channel.onChannelInactive();
         }
@@ -155,29 +153,40 @@ public class Connection implements SocketConnection {
         return connection != null && connection.authorized();
     }
 
-    public void close() {
-        if (closed) return;
-        closed = true;
+
+    public CompletableFuture<Void> close() {
+        if (!closing.compareAndSet(false, true)) {
+            return CompletableFuture.completedFuture(null);
+        }
+
         var conn = connection;
-        for (ClientChannel channel : List.copyOf(channels.values())) {
-            try {
-                channel.close().get(5, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                log.error("Error while closing channel {}", channel.id(), e);
-            }
-            if (conn != null && conn.authorized()) {
-                try {
-                    conn.writeAndFlush(new C2SCloseChannelPacket(channel.id()))
-                            .await(10, TimeUnit.SECONDS);
-                }catch (InterruptedException e){
-                }
+
+        List<CompletableFuture<?>> futures = new ArrayList<>();
+
+        if (conn != null && conn.authorized()) {
+            for (ClientChannel channel : List.copyOf(channels.values())) {
+                futures.add(channel.close());
+                // хотим закрыть канал после того как все таски запущенные из close выполняться
+                channel.eventLoop().execute(() -> conn.send(new C2SCloseChannelPacket(channel.id())));
             }
         }
-        connection = null;
-        if (conn != null) {
-            conn.close();
-        }
-        channels.clear();
+
+        return CompletableFuture
+                .allOf(futures.toArray(CompletableFuture[]::new))
+                .orTimeout(30, TimeUnit.SECONDS)
+                .exceptionally(ex -> null)
+                .thenCompose(v -> {
+                    connection = null;
+
+                    if (conn != null) {
+                        return conn.close();
+                    }
+
+                    return CompletableFuture.completedFuture(null);
+                })
+                .whenComplete((v, ex) -> {
+                    channels.clear();
+                });
     }
 
     public ConnectionConfig config() {

@@ -21,15 +21,22 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
-public abstract class ClientLocksHandler implements ChannelHandler {
+public final class ClientLocksHandler implements ChannelHandler {
+    public static final int MAX_BLOB_SIZE = (16 << 20) - 128;
     private final AtomicInteger counter = new AtomicInteger();
     private Logger log = DEFAULT_LOGGER;
     private EventLoopWorker eventLoop;
     private final Map<UUID, LockData> locks = new ConcurrentHashMap<>();
     private Connection freedom;
     private Pipeline pipeline;
-    private boolean closed;
+    private boolean closing;
+    private LockManager lockManager;
+
+    public void lockManager(LockManager lockManager) {
+        this.lockManager = lockManager;
+    }
 
     @Override
     public final void init(ChannelRuntime runtime) {
@@ -41,17 +48,40 @@ public abstract class ClientLocksHandler implements ChannelHandler {
         this.eventLoop = runtime.eventLoop();
         this.log = runtime.logger();
         pipeline = runtime.pipeline();
-        eventLoop.schedule(this::tick, 10_000);
+        eventLoop.schedule(this::tick, 3_000);
     }
 
     private void tick() {
-        if (closed) return;
+        if (closing) return;
         for (var lock : List.copyOf(locks.values())) {
             if (lock.pending) continue;
-            freedom.write(new C2SRenewLockPacket(lock.key, lock.token));
+            if (lockManager.ensureLockOwnership(lock.key)) {
+                lock.apiDiscards = 0;
+                freedom.write(new C2SRenewLockPacket(lock.key, lock.token));
+            } else if (++lock.apiDiscards > 3) {
+                unlock(lock.key, lock.version);
+            }
         }
-        eventLoop.schedule(this::tick, 10_000);
+        eventLoop.schedule(this::tick, 3_000);
     }
+
+    private <T> T safe(Supplier<T> s) {
+        try {
+            return s.get();
+        } catch (Exception e) {
+            log.error("Failed to safe run!", e);
+            return null;
+        }
+    }
+
+    private void safe(Runnable s) {
+        try {
+            s.run();
+        } catch (Exception e) {
+            log.error("Failed to safe run!", e);
+        }
+    }
+
 
     public Logger getLogger() {
         return log;
@@ -62,18 +92,16 @@ public abstract class ClientLocksHandler implements ChannelHandler {
         return v != null && !v.isPending();
     }
 
-    protected abstract byte[] forceUnlockNow(UUID key);
-
-    protected abstract void onMailAccept(UUID key, String json);
+    //  protected abstract byte[] forceUnlockNow(UUID key);
 
     @Override
     public final void handle(ChannelContext ctx, ChannelMessage msg) {
         if (msg instanceof S2CForceUnlockPacket unlock) {
             var lock = locks.get(unlock.key());
             if (lock == null || unlock.token() != lock.token) return; //outdated
-            locks.remove(unlock.key());
-            byte[] arr = forceUnlockNow(unlock.key());
-            log.error("Force unlocked by server {}! DATA LOST {}", unlock.key(), arrayToBase64(arr));
+            locks.remove(unlock.key(), lock);
+            safe(() -> lockManager.forceUnlock(unlock.key()));
+            log.error("Force unlocked by server {}!", unlock.key());
         } else if (msg instanceof IncomingRequest r) {
             if (r.payload() instanceof S2CMailAcceptPacket mail) {
                 var lock = locks.get(mail.key());
@@ -83,7 +111,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                 }
                 r.response(mail, C2SMailResponsePacket.accepted(lock.token));
                 try {
-                    onMailAccept(mail.key(), mail.json());
+                    lockManager.acceptMail(mail.key(), mail.json());
                 } catch (Exception e) {
                     log.error("Failed to accept mail {}", mail, e);
                 }
@@ -101,27 +129,18 @@ public abstract class ClientLocksHandler implements ChannelHandler {
     @Override
     public void close() {
         eventLoop.assertThread();
-        closed = true;
+        closing = true;
         for (var lock : List.copyOf(locks.entrySet())) {
             try {
                 var data = lock.getValue();
                 var key = lock.getKey();
-                byte[] blob = forceUnlockNow(lock.getKey());
-                if (data.isPending()) {
-                    if (blob != null) {
-                        log.error("Trying to flush data without lock! {} DATA LOST {}", key, arrayToBase64(blob));
-                    }
-                    continue;
-                }
-                if (blob == null) {
-                    freedom.write(new C2SUnlockPacket(key, data.token));
-                } else {
-                    freedom.write(new C2SUnlockAndFlushBlobPacket(key, blob, data.token));
-                }
+                safe(() -> lockManager.forceUnlock(key));
+                unlock(key, data.version);
             } catch (Exception e) {
                 log.error("Failed to flush data for {}", lock, e);
             }
         }
+        lockManager.close();
     }
 
     public void pushMail(UUID key, String json) {
@@ -130,7 +149,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                 freedom.write(new C2SPushMailPacket(key, json));
             } else {
                 try {
-                    onMailAccept(key, json);
+                    lockManager.acceptMail(key, json);
                 } catch (Exception e) {
                     log.error("Failed to accept mail {} {}", key, json, e);
                 }
@@ -138,28 +157,70 @@ public abstract class ClientLocksHandler implements ChannelHandler {
         });
     }
 
-    public void unlock(UUID key, byte @Nullable [] blob) {
-        unlock(key, blob, () -> {});
-    }
-
-    public void unlock(UUID key, byte @Nullable [] blob, Runnable r) {
+    public void pushSnapshot(UUID key, byte[] snapshot) {
+        if (snapshot.length >= MAX_BLOB_SIZE) {
+            throw new IllegalArgumentException("Snapshot is too big!");
+        }
         eventLoop.execute(() -> {
-            var lock = locks.remove(key);
-            r.run();
+            var lock = locks.get(key);
             if (lock == null) {
-                log.error("Failed to unlock {} DATA LOST {}", key, arrayToBase64(blob));
+                log.error("pushSnapshot for unlocked key! {} {}", key, arrayToBase64(snapshot));
                 return;
             }
+            lock.snapshot = snapshot;
+            lock.snapshotVersion++;
+            if (closing) return;
+            sendSnapshot(key, snapshot, lock.token, lock.snapshotVersion, 0);
+        });
+    }
+
+    private void sendSnapshot(UUID key, byte[] snapshot, int token, int version, int counter) {
+        RequestsHandler.withAck(
+                new C2SFlushBlobPacket(key, token, version, snapshot),
+                (state, conn) -> {
+                    if (!isLocked(key)) return;
+                    if (!state) {
+                        if (counter >= 10) {
+                            log.error("Failed to flush {} DATA LOST {}", key, arrayToBase64(snapshot));
+                        } else {
+                            eventLoop.schedule(() -> sendSnapshot(key, snapshot, token, version, counter + 1), 2000);
+                        }
+                    }
+                },
+                10_000
+        ).execute(pipeline, freedom);
+    }
+
+    public void unlock(UUID key) {
+        unlock(key, -1);
+    }
+
+    public void unlock(UUID key, int version) {
+        eventLoop.execute(() -> {
+            var lock = locks.get(key);
+            if (lock == null) {
+                log.error("Failed to unlock {} key is not locked", key);
+                return;
+            }
+            if (version != -1 && lock.version != version) return;
             if (lock.isPending()) {
-                if (blob != null) {
-                    log.error("Trying to flush data without lock! {} DATA LOST {}", key, arrayToBase64(blob));
-                }
+                locks.remove(key);
+            } else if (closing) {
+                locks.remove(key, lock);
+                freedom.write(new C2SFlushBlobPacket(key, lock.token, lock.snapshotVersion, lock.snapshot));
+                freedom.write(new C2SUnlockPacket(key, lock.token));
             } else {
-                if (blob == null) {
-                    freedom.write(new C2SUnlockPacket(key, lock.token));
-                } else {
-                    freedom.write(new C2SUnlockAndFlushBlobPacket(key, blob, lock.token));
-                }
+                RequestsHandler.withAck(
+                        new C2SFlushBlobPacket(key, lock.token, lock.snapshotVersion, lock.snapshot),
+                        (state, conn) -> {
+                            if (!state) {
+                                log.error("DATA LOST! Server is not accepted blob {} {}", key, arrayToBase64(lock.snapshot));
+                            }
+                            locks.remove(key, lock);
+                            freedom.write(new C2SUnlockPacket(key, lock.token));
+                        },
+                        10_000
+                ).execute(pipeline, freedom);
             }
         });
     }
@@ -170,14 +231,21 @@ public abstract class ClientLocksHandler implements ChannelHandler {
 
     // 2 lockAndLoadData - побеждает первый
     // lockAndLoadData - во время наличия блокировки не возможен
-    public void lockAndLoadData(UUID key, BiConsumer<LockStatus, byte @Nullable []> callback) {
+    public int lockAndLoadData(UUID key, BiConsumer<LockStatus, byte @Nullable []> callback) {
         var lock = new LockData(counter.getAndIncrement(), key);
         // Вне eventLoop только здесь вызываю ConcurrentHashMap#put.
         // Скажем что вне eventLoop можно put только если изначально там null.
         if (locks.putIfAbsent(key, lock) != null) {
-            throw new IllegalStateException("Key " + key + " is already locked!");
+            eventLoop.execute(() -> {
+                try {
+                    callback.accept(LockStatus.FAILURE, null);
+                } catch (Exception e) {
+                    log.error("Failed to drop duplicated lockAndLoadData", e);
+                }
+            });
+            return lock.version;
         }
-        pipeline.schedule(RequestsHandler.request(
+        pipeline.execute(RequestsHandler.request(
                 new C2SLockAndGetBlobRequestPacket(key, lock.version),
                 (status, conn) -> {
                     var actualLock = locks.get(key);
@@ -194,6 +262,7 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                             if (status.isAccepted()) {
                                 actualLock.token = status.token();
                                 actualLock.pending = false;
+                                actualLock.snapshot = status.blob();
                                 callback.accept(LockStatus.SUCCESS, status.blob());
                                 //callback может вызвать unlock
                                 if (isLocked(key)) {
@@ -207,8 +276,9 @@ public abstract class ClientLocksHandler implements ChannelHandler {
                         }
                     }
                 },
-                15_000
-        ), freedom, 100);
+                5_000
+        ), freedom);
+        return lock.version;
     }
 
     public enum LockStatus {
@@ -220,8 +290,10 @@ public abstract class ClientLocksHandler implements ChannelHandler {
         private int token;
         private int version;
         private boolean pending = true;
-        private long ownershipUntil;
         private final UUID key;
+        private int apiDiscards = 0;
+        private byte @Nullable [] snapshot;
+        private int snapshotVersion;
 
         public LockData(int version, UUID key) {
             this.version = version;
