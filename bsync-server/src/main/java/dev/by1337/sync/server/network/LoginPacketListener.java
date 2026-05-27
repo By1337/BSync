@@ -80,7 +80,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
                 pipeline.addAfter("splitter", "decoder", new PacketDecoder(protocolVersion));
                 pipeline.addAfter("prepender", "encoder", new PacketEncoder(protocolVersion));
                 server.onConnect(connection);
-                connection.write(new S2CPostLoginPacket(UUID.randomUUID()));
+                connection.write(new S2CPostLoginPacket());
             } else {
                 disconnect(ctx, "Unexpected packet type " + packet + " " + state);
             }

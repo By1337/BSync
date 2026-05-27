@@ -24,5 +24,4 @@ public interface Locks {
         SUCCESS,
         FAILURE
     }
-
 }

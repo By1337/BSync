@@ -66,7 +66,7 @@ public class DedicatedServer {
         database = new Database(config.database_config);
         clientList = new ClientList();
         connectionListener = new ConnectionListener(this);
-        var workers = new EventLoopWorkers("server-worker-%d", 4);
+        var workers = new EventLoopWorkers("server-worker-%d", 1);
         channelManager = new ChannelManager(workers, this);
         running = true;
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));

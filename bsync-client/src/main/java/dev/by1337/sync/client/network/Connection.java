@@ -14,14 +14,12 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
 import dev.by1337.sync.common.util.SingleSemaphore;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.common.work.EventLoopWorkers;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -197,11 +195,5 @@ public class Connection implements SocketConnection {
 
     public long ping() {
         return ping;
-    }
-
-    public @Nullable UUID serverUid() {
-        var con = connection;
-        if (con == null) return null;
-        return con.serverUid();
     }
 }

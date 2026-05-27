@@ -1,13 +1,10 @@
 package dev.by1337.sync.bukkit;
 
 import dev.by1337.core.util.io.ResourceUtil;
-import dev.by1337.sync.bukkit.test.TestInvSync;
-import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.config.Config;
 import dev.by1337.sync.client.config.ConnectionConfig;
 import dev.by1337.sync.client.network.ClientBootstrap;
 import dev.by1337.sync.client.network.Connection;
-import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.bukkit.Bukkit;
@@ -16,10 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +35,16 @@ public class BSync extends JavaPlugin {
         }
         if (res.hasError()) {
             getSLF4JLogger().error(res.error());
+        }
+        for (String id : config.servers.keySet()) {
+            var s = config.servers.get(id);
+            try {
+                Ed25519.privateKeyFromBase64(s.private_key());
+            } catch (Exception e) {
+                getSLF4JLogger().error("Bad key for {} {}", id, e.getMessage());
+                Bukkit.shutdown();
+                return;
+            }
         }
         EventLoopWorkers workers = new EventLoopWorkers("bsync-worker-%d", config.workers);
         ClientBootstrap clientBootstrap = new ClientBootstrap();
@@ -90,10 +93,11 @@ public class BSync extends JavaPlugin {
     public static Connection getConnection(String name) {
         return Objects.requireNonNull(connections.get(name), "Unknown server: " + name);
     }
-    public static List<Connection> getGroup(String group){
+
+    public static List<Connection> getGroup(String group) {
         List<Connection> result = new ArrayList<>();
         for (Connection value : connections.values()) {
-            if (value.config().group().equals(group)){
+            if (value.config().group().equals(group)) {
                 result.add(value);
             }
         }

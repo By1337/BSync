@@ -13,14 +13,12 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.util.Arrays;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -36,7 +34,6 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     private final Connection manager;
     private final AtomicBoolean flushScheduled = new AtomicBoolean();
     private Channel channel;
-    private volatile UUID serverUid;
 
     public ConnectionHandler(String id, ConnectionConfig connectionConfig, ClientBootstrap bootstrap, Connection manager) {
         this.id = id;
@@ -158,9 +155,5 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         });
 
         return future;
-    }
-
-    public @Nullable UUID serverUid() {
-        return serverUid;
     }
 }
