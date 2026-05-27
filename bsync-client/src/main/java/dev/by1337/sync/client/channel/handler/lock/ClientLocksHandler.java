@@ -118,15 +118,16 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 if (!recovery.isEmpty()) {
                     log.warn("Trying to recovery locks! {}", recovery.size());
                     for (Map.Entry<UUID, byte[]> entry : recovery.entrySet()) {
+                        UUID key = entry.getKey();
+                        byte[] blob = entry.getValue();
                         RequestsHandler.request(
                                 new C2SLockAndGetBlobRequestPacket(entry.getKey(), 1, true),
                                 (status, conn) -> {
-                                    UUID key = entry.getKey();
                                     if (status == null || status.isRejected()) {
-                                        log.error("Failed to recovery lock {} DATA LOST {}", key, arrayToBase64(entry.getValue()));
+                                        log.error("Failed to recovery lock {} DATA LOST {}", key, arrayToBase64(blob));
                                         return;
                                     }
-                                    freedom.write(new C2SFlushBlobPacket(key, status.token(), 1, entry.getValue()));
+                                    freedom.write(new C2SFlushBlobPacket(key, status.token(), 1, blob));
                                     freedom.write(new C2SUnlockPacket(key, status.token()));
                                 },
                                 5_000

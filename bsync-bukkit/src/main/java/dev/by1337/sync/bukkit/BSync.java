@@ -73,16 +73,13 @@ public class BSync extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // ChannelMaker.createDataChannel(getConnection("example"), "test-inv", locks -> new TestInvSync(locks, this));
-        //Player pl;
-        //pl.getInventory().clear();
     }
 
     @Override
     public void onDisable() {
         connections.values().forEach(c -> {
             try {
-                c.close().get(15, TimeUnit.SECONDS);
+                c.close().get(30, TimeUnit.SECONDS);
             } catch (ExecutionException | InterruptedException | TimeoutException e) {
                 log.error("Failed to close connection", e);
             }

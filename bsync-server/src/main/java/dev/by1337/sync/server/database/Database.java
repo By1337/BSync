@@ -5,6 +5,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import dev.by1337.yaml.decoder.RecordYamlDecoder;
 import dev.by1337.yaml.decoder.YamlDecoder;
 
+import java.util.concurrent.TimeUnit;
+
 public class Database {
 
     private final HikariDataSource dataSource;
@@ -26,6 +28,11 @@ public class Database {
         hikariConfig.setUsername(cfg.user);
         hikariConfig.setPassword(cfg.password);
         hikariConfig.setMaximumPoolSize(3);
+        hikariConfig.setKeepaliveTime(TimeUnit.MINUTES.toMillis(4));
+        hikariConfig.setMinimumIdle(1);
+        hikariConfig.setIdleTimeout(600000);
+        hikariConfig.setMaxLifetime(1800000);
+
         if (cfg.type.contains("mariadb")) {
             hikariConfig.setJdbcUrl(
                     "jdbc:mariadb://" + cfg.host + ":" + cfg.port + "/" + cfg.database
@@ -37,11 +44,6 @@ public class Database {
             );
         }
 
-        hikariConfig.setConnectionTestQuery("SELECT 1");
-        hikariConfig.setValidationTimeout(3000);
-        hikariConfig.setMinimumIdle(1);
-        hikariConfig.setIdleTimeout(600000);
-        hikariConfig.setMaxLifetime(1800000);
         return hikariConfig;
     }
 

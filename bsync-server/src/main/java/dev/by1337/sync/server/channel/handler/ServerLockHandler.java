@@ -129,7 +129,8 @@ public class ServerLockHandler implements ChannelHandler {
                     } else {
                         request.response(r, new S2CLockStatusAndBlobPacket(
                                         S2CLockStatusAndBlobPacket.Status.ACCEPTED,
-                                        safeOptional(() -> blobRepository.get(r.key())),
+                                        r.recovery() ? null :
+                                                safeOptional(() -> blobRepository.get(r.key())),
                                         lock.token,
                                         r.version()
                                 )
