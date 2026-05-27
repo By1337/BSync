@@ -72,7 +72,7 @@ public class ChannelManager {
                 connection.write(new S2CChannelStatsPacket(id, true));
                 channel.handle(new ClientConnectMessage(connection), connection);
             } else {
-                if (channelType == ChannelType.DATA_CHANNEL) {
+                if (channelType == ChannelType.LOCKS) {
                     channel = addChannel(id, c -> {
                         c.pipeline().addLast("locks", new ServerLockHandler());
                     });

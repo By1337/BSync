@@ -218,11 +218,10 @@ public final class WindowedMetric {
 
         public String simple() {
             return String.format(
-                    "avg=%s max=%s p95=%s ops=%d",
+                    "avg=%s max=%s p95=%s",
                     formatter.format(avg),
                     formatter.format(max),
-                    formatter.format(p95),
-                    count
+                    formatter.format(p95)
             );
         }
     }

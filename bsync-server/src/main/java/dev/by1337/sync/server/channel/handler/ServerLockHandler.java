@@ -1,8 +1,8 @@
 package dev.by1337.sync.server.channel.handler;
 
 import dev.by1337.sync.common.channel.ChannelMessage;
-import dev.by1337.sync.common.channel.handler.IncomingRequest;
-import dev.by1337.sync.common.channel.handler.RequestsHandler;
+import dev.by1337.sync.common.channel.handler.request.IncomingRequest;
+import dev.by1337.sync.common.channel.handler.request.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.*;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;

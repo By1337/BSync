@@ -18,10 +18,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
 public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
@@ -41,9 +41,9 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
     protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) throws Exception {
         Packet packet = Packets.read(buf, protocolVersion);
         if (state == State.HELLO) {
-            if (packet instanceof C2SHelloPacket hello) {
-                protocolVersion = hello.protocol();
-                id = hello.id();
+            if (packet instanceof C2SHelloPacket(int protocol, String id1)) {
+                protocolVersion = protocol;
+                id = id1;
                 if (protocolVersion < 0 || protocolVersion > Packets.PROTOCOL_VERSION) {
                     disconnect(ctx, "Unsupported protocol token " + protocolVersion);
                     return;
@@ -58,34 +58,29 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
                 disconnect(ctx, "Unexpected packet type " + packet + " " + state);
             }
         } else if (state == State.LOGIN) {
-            if (packet instanceof C2SLoginPacket login) {
+            if (packet instanceof C2SLoginPacket(byte[] signature)) {
                 var idBytes = id.getBytes(StandardCharsets.UTF_8);
                 byte[] payload = Arrays.copyOf(idBytes, idBytes.length + nonce.length);
                 System.arraycopy(nonce, 0, payload, idBytes.length, nonce.length);
-                byte[] signature = login.payload();
-                boolean valid = false;
-                for (PublicKey key : server.config().getAuthorizedKeys()) {
-                    try {
-                        if (Ed25519.verify(key, payload, signature)) {
-                            valid = true;
-                            break;
-                        }
-                    } catch (GeneralSecurityException ignored) {
+                PublicKey key = server.config().getAuthorizedKey();
+                try {
+                    boolean valid = Ed25519.verify(key, payload, signature);
+                    if (!valid) {
+                        disconnect(ctx, "Bad key");
+                        return;
                     }
-                }
-                if (!valid) {
-                    disconnect(ctx, "Bad key");
+                } catch (Exception e) {
+                    disconnect(ctx, e.getMessage());
                     return;
                 }
                 var pipeline = ctx.channel().pipeline();
-
                 pipeline.replace("timeout", "timeout", new ReadTimeoutHandler(120));
                 Connection connection = new Connection(ctx.channel(), server, id, protocolVersion);
                 pipeline.replace("login", "handler", connection);
                 pipeline.addAfter("splitter", "decoder", new PacketDecoder(protocolVersion));
                 pipeline.addAfter("prepender", "encoder", new PacketEncoder(protocolVersion));
                 server.onConnect(connection);
-                connection.write(new S2CPostLoginPacket());
+                connection.write(new S2CPostLoginPacket(UUID.randomUUID()));
             } else {
                 disconnect(ctx, "Unexpected packet type " + packet + " " + state);
             }

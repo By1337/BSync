@@ -65,6 +65,13 @@ public class Pipeline {
         return future;
     }
 
+    public ChannelHandler getHandler(String name) {
+        for (Entry handler : handlers) {
+            if (handler.name.equals(name)) return handler.handler;
+        }
+        throw new IllegalArgumentException("Unknown handler " + name);
+    }
+
 
     private static class ChannelContextImpl implements ChannelContext, AutoCloseable {
         private final Connection connection;

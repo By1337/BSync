@@ -9,14 +9,18 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.PrivateKey;
 import java.util.Arrays;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -32,6 +36,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     private final Connection manager;
     private final AtomicBoolean flushScheduled = new AtomicBoolean();
     private Channel channel;
+    private volatile UUID serverUid;
 
     public ConnectionHandler(String id, ConnectionConfig connectionConfig, ClientBootstrap bootstrap, Connection manager) {
         this.id = id;
@@ -42,7 +47,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     }
 
     public void connect() {
-        bootstrap.connect(connectionConfig.ip, connectionConfig.port).addListener((ChannelFutureListener) future -> {
+        bootstrap.connect(connectionConfig.ip(), connectionConfig.port()).addListener((ChannelFutureListener) future -> {
             if (!future.isSuccess()) {
                 authorized = false;
                 manager.onClosed(this);
@@ -58,11 +63,14 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     protected void channelRead0(ChannelHandlerContext ctx, Packet msg) throws Exception {
         if (!authorized) {
             if (msg instanceof S2CNoncePacket noncePacket) {
-                if (!connectionConfig.keyPath.exists()){
-                    disconnect(ctx, "Key not found " + connectionConfig.keyPath);
+                PrivateKey key;
+                try {
+                    key = Ed25519.privateKeyFromBase64(connectionConfig.private_key());
+                } catch (Exception e) {
+                    log.error("Bad private key!", e);
+                    disconnect(ctx, "Bad private key!");
                     return;
                 }
-                PrivateKey key = Ed25519.privateKeyFromBase64(Files.readString(connectionConfig.keyPath.toPath()));
                 var nonce = noncePacket.nonce();
                 var idBytes = id.getBytes(StandardCharsets.UTF_8);
                 byte[] payload = Arrays.copyOf(idBytes, idBytes.length + nonce.length);
@@ -114,7 +122,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     }
 
     private void disconnect(ChannelHandlerContext ctx, String message) {
-        if (!authorized){
+        if (!authorized) {
             if (ctx.channel().isOpen()) {
                 ctx.channel().close();
                 log.info("Disconnect unauthorized connection {}, reason: {}", ctx.channel().remoteAddress(), message);
@@ -150,5 +158,9 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         });
 
         return future;
+    }
+
+    public @Nullable UUID serverUid() {
+        return serverUid;
     }
 }

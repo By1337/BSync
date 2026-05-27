@@ -2,6 +2,7 @@ package dev.by1337.sync.server.config;
 
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.server.database.Database;
+import dev.by1337.yaml.YamlMap;
 import dev.by1337.yaml.decoder.RecordYamlDecoder;
 import dev.by1337.yaml.decoder.YamlDecoder;
 import org.slf4j.Logger;
@@ -22,38 +23,46 @@ public class Config {
             Database.DatabaseConfig.DECODER.fieldOf("database")
     );
     private static final Logger log = LoggerFactory.getLogger(Config.class);
-    private List<PublicKey> authorized_keys;
+    private PublicKey authorized_key;
     public int tcp_port = 8013;
     public final Database.DatabaseConfig database_config;
 
     public Config(int tcp_port, Database.DatabaseConfig database_config) {
         this.tcp_port = tcp_port;
         this.database_config = database_config;
-        reloadKeys();
+        try {
+            loadKey();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public Config() {
-        reloadKeys();
+        try {
+            loadKey();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         database_config = null;
     }
 
-    public void reloadKeys() {
+    private void loadKey() throws Exception {
         List<PublicKey> newKeys = new ArrayList<>();
-        File home = new File("./authorized_keys");
-        home.mkdirs();
-        for (File file : home.listFiles()) {
-            try {
-                var data = Files.readString(file.toPath(), StandardCharsets.UTF_8);
-                PublicKey key = Ed25519.publicKeyFromBase64(data);
-                newKeys.add(key);
-            } catch (Exception e) {
-                log.error("Failed to load public key from {}", file.getPath());
-            }
+        File file = new File("./keys.yaml");
+        if (file.exists()) {
+            YamlMap map = YamlMap.load(file);
+            authorized_key = Ed25519.publicKeyFromBase64(map.get("public_key").asString().result());
+
+        } else {
+            var pair = Ed25519.generateKeyPair();
+            YamlMap map = new YamlMap();
+            map.set("public_key", Ed25519.keyToBase64(pair.getPublic()));
+            map.set("private_key", Ed25519.keyToBase64(pair.getPrivate()));
+            Files.writeString(file.toPath(), map.saveToString(), StandardCharsets.UTF_8);
         }
-        authorized_keys = Collections.unmodifiableList(newKeys);
     }
 
-    public List<PublicKey> getAuthorizedKeys() {
-        return authorized_keys;
+    public PublicKey getAuthorizedKey() {
+        return authorized_key;
     }
 }

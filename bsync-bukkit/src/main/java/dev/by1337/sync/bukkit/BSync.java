@@ -10,6 +10,7 @@ import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.common.work.EventLoopWorkers;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,9 +20,7 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -36,24 +35,6 @@ public class BSync extends JavaPlugin {
     @Override
     public void onLoad() {
         homeDir = getDataFolder();
-        File keysFolder = new File(homeDir, "keys");
-        if (!keysFolder.exists()) {
-            keysFolder.mkdirs();
-            try {
-                Path keys = keysFolder.toPath();
-                var keyPair = Ed25519.generateKeyPair();
-                Files.writeString(keys.resolve("default.pub"), Ed25519.keyToBase64(keyPair.getPublic()), StandardCharsets.UTF_8);
-                Files.writeString(keys.resolve("default"), Ed25519.keyToBase64(keyPair.getPrivate()), StandardCharsets.UTF_8);
-                try (var in = getResource("keys_readme.txt")) {
-                    try (var out = new FileOutputStream(new File(keysFolder, "README.txt"))) {
-                        in.transferTo(out);
-                    }
-                }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
-
         var res = Decoders.CONFIG_DECODER.decode(ResourceUtil.load("config.yml", this).get(), homeDir);
         config = res.result();
         if (config == null) {
@@ -76,11 +57,12 @@ public class BSync extends JavaPlugin {
         for (Connection value : connections.values()) {
             value.connect();
             int x = 0;
-            while (!value.hasConnection()) {
+            while (!value.hasConnection() && !Bukkit.isStopping()) {
                 LockSupport.parkNanos(1_000_000L);
                 if (++x >= 10_000) {
                     getSLF4JLogger().error("Failed to connect to {}", value.config());
-                    break;
+                    Bukkit.shutdown();
+                    return;
                 }
             }
         }
@@ -107,5 +89,15 @@ public class BSync extends JavaPlugin {
 
     public static Connection getConnection(String name) {
         return Objects.requireNonNull(connections.get(name), "Unknown server: " + name);
+    }
+    public static List<Connection> getGroup(String group){
+        List<Connection> result = new ArrayList<>();
+        for (Connection value : connections.values()) {
+            if (value.config().group().equals(group)){
+                result.add(value);
+            }
+        }
+        if (result.isEmpty()) throw new IllegalStateException("Unknown server group " + group);
+        return result;
     }
 }

@@ -1,25 +1,53 @@
 package dev.by1337.sync.client.config;
 
-import java.io.File;
+import com.google.common.hash.Hashing;
+
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 public class ConnectionConfig {
-    public final String ip;
-    public final int port;
-    public final File keyPath;
+    private final String group;
+    private final String ip;
+    private final int port;
+    private final String private_key;
+    private final String serverId;
 
-    public ConnectionConfig(String ip, int port, File keyPath) {
+    public ConnectionConfig(String group, String ip, int port, String private_key) {
+        this.group = group;
         this.ip = Objects.requireNonNull(ip);
         this.port = port;
-        this.keyPath = Objects.requireNonNull(keyPath);
+        this.private_key = Objects.requireNonNull(private_key);
+        serverId = Hashing.sha256().hashBytes(private_key.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    public String serverId() {
+        return serverId;
+    }
+
+    public String group() {
+        return group;
+    }
+
+    public String ip() {
+        return ip;
+    }
+
+    public int port() {
+        return port;
+    }
+
+    public String private_key() {
+        return private_key;
     }
 
     @Override
     public String toString() {
         return "ConnectionConfig{" +
-                "ip='" + ip + '\'' +
+                "group='" + group + '\'' +
+                ", ip='" + ip + '\'' +
                 ", port=" + port +
-                ", keyPath=" + keyPath +
+                ", private_key='secret'" +
+                ", serverId='" + serverId + "'" +
                 '}';
     }
 }

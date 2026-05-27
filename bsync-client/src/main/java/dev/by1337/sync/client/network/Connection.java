@@ -14,15 +14,16 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
 import dev.by1337.sync.common.util.SingleSemaphore;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.common.work.EventLoopWorkers;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class Connection implements SocketConnection {
@@ -120,11 +121,11 @@ public class Connection implements SocketConnection {
         for (ClientChannel channel : List.copyOf(channels.values())) {
             channel.onChannelInactive();
         }
-        log.error("Connection closed {}:{}", config.ip, config.port);
+        log.error("Connection closed {}:{}", config.ip(), config.port());
         if (reconnectSemaphore.tryAcquire()) {
             RECONNECT_SHEDULER.schedule(() -> {
                 reconnectSemaphore.release();
-                log.info("Reconnecting {}:{}", config.ip, config.port);
+                log.info("Reconnecting {}:{}", config.ip(), config.port());
                 this.connection = new ConnectionHandler(id, config, bootstrap, this);
                 this.connection.connect();
             }, 2, TimeUnit.SECONDS);
@@ -132,7 +133,7 @@ public class Connection implements SocketConnection {
     }
 
     void postLogin(ConnectionHandler connection) {
-        log.info("Connected to {}:{}", config.ip, config.port);
+        log.info("Connected to {}:{}", config.ip(), config.port());
         onChannelActive();
     }
 
@@ -196,5 +197,11 @@ public class Connection implements SocketConnection {
 
     public long ping() {
         return ping;
+    }
+
+    public @Nullable UUID serverUid() {
+        var con = connection;
+        if (con == null) return null;
+        return con.serverUid();
     }
 }

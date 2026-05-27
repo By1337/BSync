@@ -1,7 +1,7 @@
 package dev.by1337.sync.common.channel;
 
 public enum ChannelType {
-    DATA_CHANNEL(0),
+    LOCKS(0),
     CUSTOM(1),
     ;
     public final byte id;
@@ -11,7 +11,7 @@ public enum ChannelType {
     }
     public static ChannelType fromId(int id) {
         if (id == 0)
-            return DATA_CHANNEL;
+            return LOCKS;
         if (id == 1)
             return CUSTOM;
         throw new IllegalArgumentException("Unknown channel type: " + id);

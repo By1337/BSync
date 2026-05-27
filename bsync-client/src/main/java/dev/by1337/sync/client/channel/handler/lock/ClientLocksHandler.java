@@ -4,8 +4,8 @@ import dev.by1337.sync.client.channel.ClientChannelRuntime;
 import dev.by1337.sync.client.channel.status.ChannelActiveMessage;
 import dev.by1337.sync.client.channel.status.ChannelInactiveMessage;
 import dev.by1337.sync.common.channel.ChannelMessage;
-import dev.by1337.sync.common.channel.handler.IncomingRequest;
-import dev.by1337.sync.common.channel.handler.RequestsHandler;
+import dev.by1337.sync.common.channel.handler.request.IncomingRequest;
+import dev.by1337.sync.common.channel.handler.request.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.*;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
-public final class ClientLocksHandler implements ChannelHandler {
+public final class ClientLocksHandler implements ChannelHandler, Locks {
     public static final int MAX_BLOB_SIZE = (16 << 20) - 128;
     private final AtomicInteger counter = new AtomicInteger();
     private Logger log = DEFAULT_LOGGER;
@@ -37,7 +37,7 @@ public final class ClientLocksHandler implements ChannelHandler {
     }
 
     @Override
-    public final void init(ChannelRuntime runtime) {
+    public void init(ChannelRuntime runtime) {
         if (!(runtime instanceof ClientChannelRuntime ccr)) throw new IllegalArgumentException("Invalid runtime type");
         if (this.eventLoop != null) {
             throw new IllegalStateException("Duplicate handler add!");
@@ -85,15 +85,14 @@ public final class ClientLocksHandler implements ChannelHandler {
         return log;
     }
 
+    @Override
     public boolean isLocked(UUID uuid) {
         var v = locks.get(uuid);
         return v != null && !v.isPending();
     }
 
-    //  protected abstract byte[] forceUnlockNow(UUID key);
-
     @Override
-    public final void handle(ChannelContext ctx, ChannelMessage msg) {
+    public void handle(ChannelContext ctx, ChannelMessage msg) {
         if (msg instanceof S2CForceUnlockPacket unlock) {
             var lock = locks.get(unlock.key());
             if (lock == null || unlock.token() != lock.token) return; //outdated
@@ -116,14 +115,14 @@ public final class ClientLocksHandler implements ChannelHandler {
             }
         } else {
             if (msg instanceof ChannelActiveMessage) {
-                if (!recovery.isEmpty()){
+                if (!recovery.isEmpty()) {
                     log.warn("Trying to recovery locks! {}", recovery.size());
                     for (Map.Entry<UUID, byte[]> entry : recovery.entrySet()) {
                         RequestsHandler.request(
                                 new C2SLockAndGetBlobRequestPacket(entry.getKey(), 1, true),
                                 (status, conn) -> {
                                     UUID key = entry.getKey();
-                                    if (status == null || status.isRejected()){
+                                    if (status == null || status.isRejected()) {
                                         log.error("Failed to recovery lock {} DATA LOST {}", key, arrayToBase64(entry.getValue()));
                                         return;
                                     }
@@ -162,11 +161,14 @@ public final class ClientLocksHandler implements ChannelHandler {
             }
         }
         lockManager.close();
+        recovery.clear();
     }
 
+    @Override
     public void pushMail(UUID key, String json) {
         eventLoop.execute(() -> {
             if (!isLocked(key)) {
+                //todo дедубликация и ретраи?
                 freedom.write(new C2SPushMailPacket(key, json));
             } else {
                 try {
@@ -185,7 +187,15 @@ public final class ClientLocksHandler implements ChannelHandler {
         eventLoop.execute(() -> {
             var lock = locks.get(key);
             if (lock == null) {
-                log.error("pushSnapshot for unlocked key! {} {}", key, arrayToBase64(snapshot));
+                // этот ключ мог попасть в recovery только если произошёл дисконект от мастер-сервера когда у нас была блокировка
+                // pushSnapshot мог прийти из player quit ивента
+                // вообще отключение от мастер-сервера провоцирует pushSnapshot, но финальное отключения игрока с сервера происходит не сразу,
+                // и если апи имеет более актуальные данные то разрешаем их записать.
+                if (recovery.containsKey(key)) {
+                    recovery.put(key, snapshot);
+                } else {
+                    log.error("pushSnapshot for unlocked key! {} {}", key, arrayToBase64(snapshot));
+                }
                 return;
             }
             lock.snapshot = snapshot;
@@ -219,6 +229,7 @@ public final class ClientLocksHandler implements ChannelHandler {
         unlock(key, -1);
     }
 
+    @Override
     public void unlock(UUID key, int version) {
         eventLoop.execute(() -> {
             var lock = locks.get(key);
@@ -255,6 +266,7 @@ public final class ClientLocksHandler implements ChannelHandler {
 
     // 2 lockAndLoadData - побеждает первый
     // lockAndLoadData - во время наличия блокировки не возможен
+    @Override
     public int lockAndLoadData(UUID key, BiConsumer<Locks.LockStatus, byte @Nullable []> callback) {
         var lock = new LockData(counter.getAndIncrement(), key);
         // Вне eventLoop только здесь вызываю ConcurrentHashMap#put.
@@ -308,7 +320,7 @@ public final class ClientLocksHandler implements ChannelHandler {
 
     private static class LockData {
         private int token;
-        private int version;
+        private final int version;
         private boolean pending = true;
         private final UUID key;
         private int apiDiscards = 0;

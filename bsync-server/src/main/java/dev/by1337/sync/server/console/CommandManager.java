@@ -11,10 +11,6 @@ public class CommandManager {
 
     public CommandManager() {
         root = new Command<>("root");
-        root.sub(new Command<DedicatedServer>("reload_keys").executor(server -> {
-            server.config().reloadKeys();
-            log.info("reload keys successful. keys {}", server.config().getAuthorizedKeys().size());
-        }));
         root.sub(new Command<DedicatedServer>("stop").executor(DedicatedServer::shutdown));
         root.sub(new Command<DedicatedServer>("uptime").executor(server -> {
             long uptime = System.currentTimeMillis() - server.startMillis();

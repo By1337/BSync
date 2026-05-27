@@ -51,7 +51,7 @@ public class DedicatedServer {
             new File("./server.lock").delete();
         }
         try {
-            if (!new File("./server.lock").createNewFile()){
+            if (!new File("./server.lock").createNewFile()) {
                 throw new IOException("Failed to create server.lock!");
             }
         } catch (IOException e) {

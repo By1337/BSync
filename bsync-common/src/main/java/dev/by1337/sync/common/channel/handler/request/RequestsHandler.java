@@ -1,4 +1,4 @@
-package dev.by1337.sync.common.channel.handler;
+package dev.by1337.sync.common.channel.handler.request;
 
 import dev.by1337.sync.common.callback.PacketCallback;
 import dev.by1337.sync.common.channel.ChannelMessage;

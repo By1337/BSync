@@ -43,7 +43,10 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
 
     @Override
     public void write(Packet msg) {
-        connection.write(new ChanneledPacket(id, msg));
+        if (channelActive.get())
+            connection.write(new ChanneledPacket(id, msg));
+        else
+            log.warn("Drop packet {} cuz has no connection!", msg);
     }
 
     @Override

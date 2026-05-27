@@ -1,9 +1,11 @@
-id: client-1
+id: client-1 # не обязан быть уникальным для каждого клиента.
 workers: 1 # сколько бизнес потоков будет?
 netty_threads: 1 # или "-Dbcsync.client.netty.threads=1" тогда здесь надо указать -1
 
 servers:
   example:
+    group: player_data
     ip: localhost
     port: 8013
     key: default
+    private_key: 'PUT_HERE_PRIVATE_KEY'
