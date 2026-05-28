@@ -36,21 +36,18 @@ public class BSync extends JavaPlugin {
         if (res.hasError()) {
             getSLF4JLogger().error(res.error());
         }
-        for (String id : config.servers.keySet()) {
-            var s = config.servers.get(id);
-            try {
-                Ed25519.privateKeyFromBase64(s.private_key());
-            } catch (Exception e) {
-                getSLF4JLogger().error("Bad key for {} {}", id, e.getMessage());
-                Bukkit.shutdown();
-                return;
-            }
-        }
         EventLoopWorkers workers = new EventLoopWorkers("bsync-worker-%d", config.workers);
         ClientBootstrap clientBootstrap = new ClientBootstrap();
         for (Map.Entry<String, ConnectionConfig> entry : config.servers.entrySet()) {
+            var cfg = entry.getValue();
+            try {
+                Ed25519.privateKeyFromBase64(cfg.private_key());
+            } catch (Exception e) {
+                getSLF4JLogger().error("Bad key for {} {}", entry.getKey(), e.getMessage());
+                continue;
+            }
             Connection connection = new Connection(
-                    entry.getValue(),
+                    cfg,
                     workers,
                     config.id,
                     clientBootstrap
@@ -79,7 +76,7 @@ public class BSync extends JavaPlugin {
     public void onDisable() {
         connections.values().forEach(c -> {
             try {
-                c.close().get(30, TimeUnit.SECONDS);
+                c.close().get(60, TimeUnit.SECONDS);
             } catch (ExecutionException | InterruptedException | TimeoutException e) {
                 log.error("Failed to close connection", e);
             }

@@ -64,7 +64,7 @@ public class Connection implements SocketConnection {
         }
     }
 
-    public ClientChannel addChannel(String id, ChannelType channelType, Consumer<ClientChannel> init) {
+    public ClientChannel addChannel(String id, String channelType, Consumer<ClientChannel> init) {
         if (closing.get()) throw new IllegalStateException("Connection is closed");
         if (channels.containsKey(id)) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
@@ -107,7 +107,7 @@ public class Connection implements SocketConnection {
             write(new PongPacket(System.currentTimeMillis()));
         } else if (packet instanceof PongPacket p) {
             ping = System.currentTimeMillis() - p.timestamp();
-            log.info("ping {}", ping);
+           // log.info("ping {}", ping);
         } else {
             log.error("Packet received unknown packet {}", packet);
         }

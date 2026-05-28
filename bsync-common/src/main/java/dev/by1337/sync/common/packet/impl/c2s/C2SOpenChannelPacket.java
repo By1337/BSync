@@ -6,16 +6,28 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
-public record C2SOpenChannelPacket(String id, ChannelType channelType) implements Packet {
+public record C2SOpenChannelPacket(String id, String channelType) implements Packet {
 
-    public C2SOpenChannelPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUtf8(buf), ChannelType.fromId(buf.readByte()));
+    public static C2SOpenChannelPacket read(ByteBuf buf, int protocolVersion) {
+        String id;
+        String channelType;
+        id = ByteBufCodecs.readUtf8(buf);
+        if (protocolVersion == 1) {
+            channelType = buf.readByte() == 0 ? ChannelType.LOCKS : "default:custom";
+        } else {
+            channelType = ByteBufCodecs.readUtf8(buf);
+        }
+        return new C2SOpenChannelPacket(id, channelType);
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUtf8(buf, id);
-        buf.writeByte(channelType.id);
+        if (protocolVersion == 1) {
+            buf.writeByte(channelType.equals(ChannelType.LOCKS) ? 0 : 1);
+        } else {
+            ByteBufCodecs.writeUtf8(buf, channelType);
+        }
     }
 
     @Override

@@ -21,10 +21,10 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     private final String id;
     private final EventLoopWorker eventLoop;
     private final Pipeline pipeline;
-    private final ChannelType channelType;
+    private final String channelType;
     private volatile boolean registered;
 
-    public ClientChannel(Connection connection, String id, EventLoopWorker eventLoop, ChannelType channelType) {
+    public ClientChannel(Connection connection, String id, EventLoopWorker eventLoop, String channelType) {
         this.connection = connection;
         this.id = id;
         log = LoggerFactory.getLogger(id + "|Channel");
@@ -106,7 +106,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         return id;
     }
 
-    public ChannelType getChannelType() {
+    public String getChannelType() {
         return channelType;
     }
 

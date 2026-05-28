@@ -7,7 +7,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
 public class Packets {
-    public static final int PROTOCOL_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 2;
 
     public static final int C2S_HELLO_PACKET = 0;
     public static final int S2C_NONCE_PACKET = 1;
@@ -58,7 +58,7 @@ public class Packets {
             case C2S_LOCK_AND_GET_BLOB_PACKET -> new C2SLockAndGetBlobRequestPacket(buf, protocolVersion);
             case S2C_LOCK_STATUS_AND_BLOB_PACKET -> new S2CLockStatusAndBlobPacket(buf, protocolVersion);
             case C2S_UNLOCK_AND_FLUSH_BLOB_PACKET -> new C2SUnlockAndFlushBlobPacket(buf, protocolVersion);
-            case C2S_OPEN_CHANNEL_PACKET -> new C2SOpenChannelPacket(buf, protocolVersion);
+            case C2S_OPEN_CHANNEL_PACKET -> C2SOpenChannelPacket.read(buf, protocolVersion);
             case C2S_CLOSE_CHANNEL_PACKET -> new C2SCloseChannelPacket(buf, protocolVersion);
             case S2C_CHANNEL_STATUS_PACKET -> new S2CChannelStatsPacket(buf, protocolVersion);
             case C2S_UNLOCK_PACKET -> new C2SUnlockPacket(buf, protocolVersion);

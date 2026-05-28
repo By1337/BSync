@@ -66,13 +66,13 @@ public class ChannelManager {
                 log.error("Received packet for unknown channel {} {} {}", id, connection, payload);
                 connection.write(new S2CChannelStatsPacket(id, false));
             }
-        } else if (packet instanceof C2SOpenChannelPacket(String id, ChannelType channelType)) {
+        } else if (packet instanceof C2SOpenChannelPacket(String id, String channelType)) {
             var channel = channels.get(id);
             if (channel != null) {
                 connection.write(new S2CChannelStatsPacket(id, true));
                 channel.handle(new ClientConnectMessage(connection), connection);
             } else {
-                if (channelType == ChannelType.LOCKS) {
+                if (channelType.equals(ChannelType.LOCKS)) {
                     channel = addChannel(id, c -> {
                         c.pipeline().addLast("locks", new ServerLockHandler());
                     });
