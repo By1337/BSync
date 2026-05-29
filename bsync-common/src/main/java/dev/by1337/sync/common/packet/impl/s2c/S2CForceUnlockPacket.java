@@ -2,7 +2,6 @@ package dev.by1337.sync.common.packet.impl.s2c;
 
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
-import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
@@ -19,8 +18,4 @@ public record S2CForceUnlockPacket(UUID key, int token) implements Packet {
         buf.writeInt(token);
     }
 
-    @Override
-    public int getId() {
-        return Packets.S2C_FORCE_UNLOCK_PACKET;
-    }
 }

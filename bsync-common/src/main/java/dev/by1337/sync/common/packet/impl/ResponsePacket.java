@@ -20,8 +20,4 @@ public record ResponsePacket(int uid, @Nullable Packet payload) implements Packe
         }
     }
 
-    @Override
-    public int getId() {
-        return Packets.RESPONSE_PACKET;
-    }
 }

@@ -7,5 +7,4 @@ public interface Packet extends ChannelMessage {
 
     void write(ByteBuf buf, int protocolVersion);
 
-    int getId();
 }

@@ -1,7 +1,6 @@
 package dev.by1337.sync.common.packet.impl.s2c;
 
 import dev.by1337.sync.common.packet.Packet;
-import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
 public record S2CFlushResponsePacket(boolean accepted) implements Packet {
@@ -15,8 +14,4 @@ public record S2CFlushResponsePacket(boolean accepted) implements Packet {
         buf.writeBoolean(accepted);
     }
 
-    @Override
-    public int getId() {
-        return Packets.S2C_FLUSH_ACCEPT_RESPONSE;
-    }
 }

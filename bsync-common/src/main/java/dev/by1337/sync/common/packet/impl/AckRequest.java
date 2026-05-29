@@ -16,11 +16,6 @@ public record AckRequest(Packet payload) implements Packet, ExpectsResponse<AckR
         Packets.write(buf, protocolVersion, payload);
     }
 
-    @Override
-    public int getId() {
-        return Packets.ACK_REQUEST;
-    }
-
     public record AckResponse() implements Packet{
         public static final AckResponse INSTANCE = new AckResponse();
 
@@ -29,9 +24,5 @@ public record AckRequest(Packet payload) implements Packet, ExpectsResponse<AckR
 
         }
 
-        @Override
-        public int getId() {
-            return  Packets.ACK_RESPONSE;
-        }
     }
 }

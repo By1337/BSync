@@ -16,8 +16,4 @@ public record RequestPacket(int uid, Packet payload) implements Packet {
         Packets.write(buf, protocolVersion, payload);
     }
 
-    @Override
-    public int getId() {
-        return Packets.REQUEST_PACKET;
-    }
 }

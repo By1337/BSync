@@ -2,7 +2,6 @@ package dev.by1337.sync.common.packet.impl.s2c;
 
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
-import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 
 public record S2CChannelStatsPacket(String id, boolean opened) implements Packet {
@@ -17,8 +16,4 @@ public record S2CChannelStatsPacket(String id, boolean opened) implements Packet
         buf.writeBoolean(opened);
     }
 
-    @Override
-    public int getId() {
-        return Packets.S2C_CHANNEL_STATUS_PACKET;
-    }
 }

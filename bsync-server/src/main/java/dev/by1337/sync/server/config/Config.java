@@ -47,7 +47,6 @@ public class Config {
     }
 
     private void loadKey() throws Exception {
-        List<PublicKey> newKeys = new ArrayList<>();
         File file = new File("./keys.yaml");
         if (file.exists()) {
             YamlMap map = YamlMap.load(file);

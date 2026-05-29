@@ -2,7 +2,6 @@ package dev.by1337.sync.common.packet.impl.c2s;
 
 import dev.by1337.sync.common.packet.ByteBufCodecs;
 import dev.by1337.sync.common.packet.Packet;
-import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,11 +22,6 @@ public record C2SFlushBlobPacket(UUID key, int token, int version,
         buf.writeInt(token);
         buf.writeInt(version);
         ByteBufCodecs.writeOptional(buf, blob, ByteBufCodecs::writeByteArray);
-    }
-
-    @Override
-    public int getId() {
-        return Packets.C2S_FLUSH_BLOB_REQUEST;
     }
 
     @Override

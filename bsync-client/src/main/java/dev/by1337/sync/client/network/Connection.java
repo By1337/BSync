@@ -36,13 +36,15 @@ public class Connection implements SocketConnection {
     private final Map<String, ClientChannel> channels = new ConcurrentHashMap<>();
     private long ping = 0;
     private final SingleSemaphore reconnectSemaphore = new SingleSemaphore();
+    private final EventLoopWorker executor;
 
     public Connection(ConnectionConfig config, EventLoopWorkers workers, String id, ClientBootstrap bootstrap) {
         this.config = config;
         this.workers = workers;
         this.id = id;
         this.bootstrap = bootstrap;
-        pingTask(workers.getNext());
+        executor = workers.getNext();
+        pingTask(executor);
     }
 
     private void pingTask(EventLoopWorker worker) {
@@ -93,7 +95,11 @@ public class Connection implements SocketConnection {
                 } else {
                     channel.onChannelInactive();
                     log.error("Channel {} has been closed by server. Try to reopen", stats.id());
-                    write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+                    executor.schedule(() -> {
+                        //todo пакет и потеряться может
+                        if (channels.get(channel.id()) == channel)
+                            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+                    }, 1_000);
                 }
             }
         } else if (packet instanceof ChanneledPacket c) {

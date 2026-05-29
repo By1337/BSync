@@ -1,7 +1,6 @@
 package dev.by1337.sync.common.packet.impl.c2s;
 
 import dev.by1337.sync.common.packet.Packet;
-import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
@@ -19,11 +18,6 @@ public record C2SMailResponsePacket(Status status, int token) implements Packet 
     public void write(ByteBuf buf, int protocolVersion) {
         buf.writeByte(status.id);
         buf.writeInt(token);
-    }
-
-    @Override
-    public int getId() {
-        return Packets.C2S_MAIL_STATUS_PACKET;
     }
 
     public static C2SMailResponsePacket reject(int token) {
