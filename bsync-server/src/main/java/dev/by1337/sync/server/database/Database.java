@@ -19,7 +19,7 @@ public class Database {
         return dataSource;
     }
 
-    public void close(){
+    public void close() {
         dataSource.close();
     }
 
@@ -33,7 +33,13 @@ public class Database {
         hikariConfig.setIdleTimeout(600000);
         hikariConfig.setMaxLifetime(1800000);
 
-        if (cfg.type.contains("mariadb")) {
+        if (cfg.type.equals("h2")) {
+            hikariConfig.setJdbcUrl("jdbc:h2:file:./bsync-" + cfg.database +
+                    ";MODE=MySQL" +
+                    ";DB_CLOSE_DELAY=-1" +
+                    ";DATABASE_TO_UPPER=false");
+            hikariConfig.setDriverClassName("org.h2.Driver");
+        } else if (cfg.type.contains("mariadb")) {
             hikariConfig.setJdbcUrl(
                     "jdbc:mariadb://" + cfg.host + ":" + cfg.port + "/" + cfg.database
             );

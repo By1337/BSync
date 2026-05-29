@@ -1,7 +1,7 @@
 port: 8013
 
 database:
-  type: mariadb # mysql, mariadb
+  type: h2 # mysql, mariadb, h2
   user: root
   password: password
   host: localhost
