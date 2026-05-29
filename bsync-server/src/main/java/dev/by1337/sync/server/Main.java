@@ -13,9 +13,6 @@ public class Main {
 
         var v = new DedicatedServer();
         v.readTerminal();
-        //var pair =  Ed25519.generateKeyPair();
-        // Files.writeString(Path.of("./test_ket.pub"), Ed25519.keyToBase64(pair.getPublic()));
-        // Files.writeString(Path.of("./test_ket"), Ed25519.keyToBase64(pair.getPrivate()));
     }
 
     static {

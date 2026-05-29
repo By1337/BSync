@@ -41,12 +41,11 @@ public class Pipeline {
         }
     }
 
-    public void registerAll(ChannelRuntime runtime, Runnable task) {
+    public void registerAll(ChannelRuntime runtime) {
         eventLoop.execute(() -> {
             for (Entry handler : handlers) {
                 handler.handler.init(runtime);
             }
-            task.run();
         });
     }
 

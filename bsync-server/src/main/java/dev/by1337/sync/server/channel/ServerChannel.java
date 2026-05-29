@@ -87,7 +87,7 @@ public class ServerChannel {
             public Logger logger() {
                 return self.log;
             }
-        }, () -> {});
+        });
     }
     public void close() {
         pipeline.closeAll();

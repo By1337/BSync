@@ -10,6 +10,7 @@ import dev.by1337.sync.common.channel.pipeline.*;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
+import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -18,7 +19,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
-import java.util.function.Supplier;
 
 public final class ClientLocksHandler implements ChannelHandler, Locks {
     public static final int MAX_BLOB_SIZE = (16 << 20) - 128;
@@ -30,10 +30,11 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     private Connection freedom;
     private Pipeline pipeline;
     private boolean closing;
-    private LockManager lockManager;
+
+    private BSUtils.FaultIsolation<LockManager> lockManager;
 
     public void lockManager(LockManager lockManager) {
-        this.lockManager = lockManager;
+        this.lockManager = BSUtils.faultIsolation(lockManager);
     }
 
     @Override
@@ -53,7 +54,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
         if (closing) return;
         for (var lock : List.copyOf(locks.values())) {
             if (lock.pending) continue;
-            if (lockManager.ensureLockOwnership(lock.key)) {
+            if (Boolean.TRUE.equals(lockManager.get(v -> v.ensureLockOwnership(lock.key)))) {
                 lock.apiDiscards = 0;
                 freedom.write(new C2SRenewLockPacket(lock.key, lock.token));
             } else if (++lock.apiDiscards > 3) {
@@ -61,23 +62,6 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
             }
         }
         eventLoop.schedule(this::tick, 3_000);
-    }
-
-    private <T> T safe(Supplier<T> s) {
-        try {
-            return s.get();
-        } catch (Exception e) {
-            log.error("Failed to safe run!", e);
-            return null;
-        }
-    }
-
-    private void safe(Runnable s) {
-        try {
-            s.run();
-        } catch (Exception e) {
-            log.error("Failed to safe run!", e);
-        }
     }
 
 
@@ -97,7 +81,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
             var lock = locks.get(unlock.key());
             if (lock == null || unlock.token() != lock.token) return; //outdated
             locks.remove(unlock.key(), lock);
-            safe(() -> lockManager.forceUnlock(unlock.key()));
+            lockManager.run(v -> v.forceUnlock(unlock.key()));
             log.error("Force unlocked by server {}!", unlock.key());
         } else if (msg instanceof IncomingRequest r) {
             if (r.payload() instanceof S2CMailAcceptPacket mail) {
@@ -107,11 +91,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                     return; //outdated
                 }
                 r.response(mail, C2SMailResponsePacket.accepted(lock.token));
-                try {
-                    lockManager.acceptMail(mail.key(), mail.json());
-                } catch (Exception e) {
-                    log.error("Failed to accept mail {}", mail, e);
-                }
+                lockManager.run(v -> v.acceptMail(mail.key(), mail.json()));
             }
         } else {
             if (msg instanceof ChannelActiveMessage) {
@@ -138,7 +118,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
             } else if (msg instanceof ChannelInactiveMessage && !locks.isEmpty()) {
                 log.error("Connection lost but has locks!");
                 for (LockData value : List.copyOf(locks.values())) {
-                    safe(() -> lockManager.forceUnlock(value.key));
+                    lockManager.run(v -> v.forceUnlock(value.key));
                     locks.remove(value.key, value);
                     recovery.put(value.key, value.snapshot);
                 }
@@ -155,13 +135,13 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
             try {
                 var data = lock.getValue();
                 var key = lock.getKey();
-                safe(() -> lockManager.forceUnlock(key));
+                lockManager.run(v -> v.forceUnlock(key));
                 unlock(key, data.version);
             } catch (Exception e) {
                 log.error("Failed to flush data for {}", lock, e);
             }
         }
-        lockManager.close();
+        lockManager.run(LockManager::close);
         recovery.clear();
     }
 
@@ -172,11 +152,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 //todo дедубликация и ретраи?
                 freedom.write(new C2SPushMailPacket(key, json));
             } else {
-                try {
-                    lockManager.acceptMail(key, json);
-                } catch (Exception e) {
-                    log.error("Failed to accept mail {} {}", key, json, e);
-                }
+                lockManager.run(v -> v.acceptMail(key, json));
             }
         });
     }
@@ -269,16 +245,15 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     // lockAndLoadData - во время наличия блокировки не возможен
     @Override
     public int lockAndLoadData(UUID key, BiConsumer<Locks.LockStatus, byte @Nullable []> callback) {
+        return lockAndLoadData(key, BSUtils.faultIsolation(callback));
+    }
+    private int lockAndLoadData(UUID key, BSUtils.FaultIsolation<BiConsumer<LockStatus, byte @Nullable []>> callback) {
         var lock = new LockData(counter.getAndIncrement(), key);
         // Вне eventLoop только здесь вызываю ConcurrentHashMap#put.
         // Скажем что вне eventLoop можно put только если изначально там null.
         if (locks.putIfAbsent(key, lock) != null) {
             eventLoop.execute(() -> {
-                try {
-                    callback.accept(Locks.LockStatus.FAILURE, null);
-                } catch (Exception e) {
-                    log.error("Failed to drop duplicated lockAndLoadData", e);
-                }
+                callback.run(v -> v.accept(Locks.LockStatus.FAILURE, null));
             });
             return lock.version;
         }
@@ -286,28 +261,28 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 new C2SLockAndGetBlobRequestPacket(key, lock.version, false),
                 (status, conn) -> {
                     var actualLock = locks.get(key);
-                    if (status == null) {
+                    if (status == null || conn == null) {
                         log.error("Failed to get lock for {} Has no response", key);
                         locks.remove(key, lock);
-                        callback.accept(Locks.LockStatus.FAILURE, null);
+                        callback.run(v -> v.accept(Locks.LockStatus.FAILURE, null));
                     } else {
                         if (actualLock == null || actualLock.version != status.version()) {
                             log.error("Failed to get lock for {} Outdated response {}", key, status);
                             conn.write(new C2SUnlockPacket(key, status.token()));
-                            callback.accept(Locks.LockStatus.FAILURE, null);
+                            callback.run(v -> v.accept(Locks.LockStatus.FAILURE, null));
                         } else {
                             if (status.isAccepted()) {
                                 actualLock.token = status.token();
                                 actualLock.pending = false;
                                 actualLock.snapshot = status.blob();
-                                callback.accept(Locks.LockStatus.SUCCESS, status.blob());
+                                callback.run(v -> v.accept(Locks.LockStatus.SUCCESS, status.blob()));
                                 //callback может вызвать unlock
                                 if (isLocked(key)) {
                                     conn.write(new C2SPollAllMailsPacket(key, status.token()));
                                 }
                             } else {
                                 log.error("Failed to get lock for {} response {}", key, status);
-                                callback.accept(Locks.LockStatus.FAILURE, null);
+                                callback.run(v -> v.accept(Locks.LockStatus.FAILURE, null));
                                 locks.remove(key, lock);
                             }
                         }

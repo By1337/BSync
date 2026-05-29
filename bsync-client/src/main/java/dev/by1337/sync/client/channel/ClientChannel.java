@@ -3,7 +3,6 @@ package dev.by1337.sync.client.channel;
 import dev.by1337.sync.client.channel.status.ChannelActiveMessage;
 import dev.by1337.sync.client.channel.status.ChannelInactiveMessage;
 import dev.by1337.sync.client.network.Connection;
-import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
@@ -22,7 +21,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     private final EventLoopWorker eventLoop;
     private final Pipeline pipeline;
     private final String channelType;
-    private volatile boolean registered;
+    private final AtomicBoolean channelActive = new AtomicBoolean();
 
     public ClientChannel(Connection connection, String id, EventLoopWorker eventLoop, String channelType) {
         this.connection = connection;
@@ -79,14 +78,13 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
             public Logger logger() {
                 return self.log;
             }
-        }, () -> registered = true);
+        });
     }
 
     public boolean registered() {
-        return registered;
+        return isRegistered.get();
     }
 
-    private final AtomicBoolean channelActive = new AtomicBoolean();
 
     public void onChannelActive() {
         if (!channelActive.compareAndSet(false, true)) return;
@@ -96,6 +94,10 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     public void onChannelInactive() {
         if (!channelActive.compareAndSet(true, false)) return;
         pipeline.execute(ChannelInactiveMessage.INSTANCE, this);
+    }
+
+    public boolean isActive() {
+        return channelActive.get();
     }
 
     public CompletableFuture<Void> close() {

@@ -42,6 +42,7 @@ public final class EventLoopWorker {
             if (!queue.offer(runnable)) {
                 log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
             }
+            LockSupport.unpark(thread);
             return;
         }
         execute(() -> scheduled.add(new ScheduledTask(System.nanoTime() + (ms * 1_000_000), runnable)));

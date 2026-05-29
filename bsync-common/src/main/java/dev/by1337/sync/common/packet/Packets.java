@@ -8,6 +8,7 @@ import io.netty.handler.codec.DecoderException;
 
 public class Packets {
     public static final int PROTOCOL_VERSION = 2;
+    public static final int LAST_SUPPORTED_VERSION = 2;
 
     public static final int C2S_HELLO_PACKET = 0;
     public static final int S2C_NONCE_PACKET = 1;
@@ -74,5 +75,12 @@ public class Packets {
     public static void write(ByteBuf buf, int protocolVersion, Packet packet) {
         buf.writeByte(packet.getId());
         packet.write(buf, protocolVersion);
+    }
+
+    public static boolean isSupportedProtocol(int version){
+        return version >= LAST_SUPPORTED_VERSION;
+    }
+    public static boolean isLegacyProtocol(int version){
+        return version < PROTOCOL_VERSION;
     }
 }

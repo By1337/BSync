@@ -1,5 +1,6 @@
 package dev.by1337.sync.server;
 
+import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import dev.by1337.sync.server.channel.ChannelManager;
 import dev.by1337.sync.server.channel.handler.ServerLockHandler;
@@ -74,7 +75,7 @@ public class DedicatedServer {
         startMillis = System.currentTimeMillis();
 
         workers.forEach(worker -> Metrics.METRICS.create(worker.name(), MetricFormatter.nanos(), worker::busyNanosThenReset));
-        Metrics.METRICS.create("in-bound", MetricFormatter.number(), channelManager::receivedPacketsSumThenReset);
+        Metrics.METRICS.create("in-bound-pps", MetricFormatter.number(), channelManager::receivedPacketsSumThenReset);
 
         Thread.ofVirtual().start(() -> {
             while (true) {
@@ -106,8 +107,8 @@ public class DedicatedServer {
     public void shutdown() {
         if (!running) return;
         running = false;
-        safe(channelManager::close);
-        safe(connectionListener::stop);
+        BSUtils.safe(channelManager::close);
+        BSUtils.safe(connectionListener::stop);
         try {
             database.close();
         } catch (Exception e) {
@@ -119,19 +120,6 @@ public class DedicatedServer {
             terminalThread.interrupt();
         }
         System.exit(1);
-    }
-
-    private void safe(ServerLockHandler.ERunnable s) {
-        try {
-            s.run();
-        } catch (Exception e) {
-            log.error("Failed to safe run!", e);
-        }
-    }
-
-    @FunctionalInterface
-    public interface ERunnable {
-        void run() throws Exception;
     }
 
     public Config config() {

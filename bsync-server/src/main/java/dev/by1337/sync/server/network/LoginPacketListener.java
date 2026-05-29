@@ -44,10 +44,11 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
             if (packet instanceof C2SHelloPacket(int protocol, String id1)) {
                 protocolVersion = protocol;
                 id = id1;
-                if (protocolVersion < 0 || protocolVersion > Packets.PROTOCOL_VERSION) {
+                if (!Packets.isSupportedProtocol(protocolVersion)) {
                     disconnect(ctx, "Unsupported protocol token " + protocolVersion);
                     return;
-                } else if (protocolVersion < Packets.PROTOCOL_VERSION) {
+
+                } else if (Packets.isLegacyProtocol(protocolVersion)) {
                     log.warn("Legacy protocol token {} {}[{}]", protocolVersion, id, ctx.channel().remoteAddress());
                 }
                 state = State.LOGIN;
