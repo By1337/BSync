@@ -2,10 +2,10 @@ id: client-1 # не обязан быть уникальным для каждо
 workers: 1 # сколько бизнес потоков будет?
 netty_threads: 1 # или "-Dbcsync.client.netty.threads=1" тогда здесь надо указать -1
 
+# Данные для подключения к bsync серверам
 servers:
-  example:
-    group: player_data
+  bsync-server-any-id: # любое имя
+    group: player_data # группа сервера, некоторые сервисы умеют распределять нагрузку между bsync серверами они используют группу для определения нужного.
     ip: localhost
     port: 8013
-    key: default
-    private_key: 'PUT_HERE_PRIVATE_KEY'
+    private_key: 'PUT_HERE_PRIVATE_KEY' # приватный ключ из keys.yml

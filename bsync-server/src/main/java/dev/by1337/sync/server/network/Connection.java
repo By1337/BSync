@@ -22,6 +22,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet> implements S
     private final String id;
     private final int protocolVersion;
     private final AtomicBoolean flushScheduled = new AtomicBoolean();
+    private int ping;
 
     public Connection(Channel channel, DedicatedServer server, String id, int protocolVersion) {
         this.channel = channel;
@@ -32,9 +33,12 @@ public class Connection extends SimpleChannelInboundHandler<Packet> implements S
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet msg) throws Exception {
-        if (msg instanceof PingPacket p){
+        if (msg instanceof PingPacket p) {
             write(new PongPacket(System.currentTimeMillis()));
-        }else {
+            write(new PingPacket());
+        } else if (msg instanceof PongPacket(long timestamp)) {
+            ping = (int) (System.currentTimeMillis() - timestamp);
+        } else {
             server.channelManager().onReceive(msg, this);
         }
     }
@@ -92,5 +96,9 @@ public class Connection extends SimpleChannelInboundHandler<Packet> implements S
 
     public int protocolVersion() {
         return protocolVersion;
+    }
+
+    public int ping() {
+        return ping;
     }
 }

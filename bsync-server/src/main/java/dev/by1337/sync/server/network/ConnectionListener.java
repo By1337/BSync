@@ -6,6 +6,8 @@ import dev.by1337.sync.common.netty.handler.FrameDecoder;
 import dev.by1337.sync.common.netty.handler.FrameEncoder;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.common.util.LazyLoad;
+import dev.by1337.sync.server.metrics.MetricFormatter;
+import dev.by1337.sync.server.metrics.Metrics;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.Epoll;
@@ -35,9 +37,12 @@ public class ConnectionListener {
     );
 
     private final DedicatedServer server;
+    private final FrameEncoder frameEncoder;
 
     public ConnectionListener(DedicatedServer server) {
         this.server = server;
+        frameEncoder = new FrameEncoder();
+        Metrics.METRICS.create("outbound-bytes", MetricFormatter.bytes(), frameEncoder::totalBytesWrittenAndReset);
     }
 
 
@@ -64,10 +69,9 @@ public class ConnectionListener {
                             }
 
                             channel.pipeline()
-                                    //  .addLast(new FlushConsolidationHandler())
                                     .addLast("timeout", new ReadTimeoutHandler(30))
                                     .addLast("splitter", new FrameDecoder())
-                                    .addLast("prepender", new FrameEncoder())
+                                    .addLast("prepender", frameEncoder)
                                     .addLast("login", new LoginPacketListener(server))
                             ;
                         }

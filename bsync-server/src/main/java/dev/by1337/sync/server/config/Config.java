@@ -11,10 +11,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.PublicKey;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 public class Config {
     public static final YamlDecoder<Config> DECODER = RecordYamlDecoder.mapOf(
@@ -47,7 +45,18 @@ public class Config {
     }
 
     private void loadKey() throws Exception {
-        File file = new File("./keys.yaml");
+        {
+            var oldFile = new File("./keys.yaml");
+            if (oldFile.exists()) {
+                var newFile = new File("./keys.yml");
+                if (newFile.exists()) {
+                    log.error("Has keys.yaml and keys.yml files? load keys.yml");
+                } else {
+                    Files.move(oldFile.toPath(), newFile.toPath(), StandardCopyOption.ATOMIC_MOVE);
+                }
+            }
+        }
+        File file = new File("./keys.yml");
         if (file.exists()) {
             YamlMap map = YamlMap.load(file);
             authorized_key = Ed25519.publicKeyFromBase64(map.get("public_key").asString().result());
