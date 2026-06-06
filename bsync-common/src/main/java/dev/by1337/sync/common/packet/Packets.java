@@ -1,13 +1,14 @@
 package dev.by1337.sync.common.packet;
 
 import dev.by1337.sync.common.packet.impl.*;
+import dev.by1337.sync.common.packet.impl.a2a.PublishPacket;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.DecoderException;
 
 public class Packets {
-    public static final int PROTOCOL_VERSION = 3;
+    public static final int PROTOCOL_VERSION = 4;
     public static final int LAST_SUPPORTED_VERSION = 3;
 
     public static final PacketRegistries REGISTRIES = new PacketRegistries();
@@ -41,6 +42,10 @@ public class Packets {
                 .add(C2SRenewLockPacket.class, C2SRenewLockPacket::new)
                 .add(C2SFlushBlobPacket.class, C2SFlushBlobPacket::new)
                 .add(S2CFlushResponsePacket.class, S2CFlushResponsePacket::new)
+        ).add("bsync:logs", new PacketRegistry()
+                .add(C2SWriteLogPacket.class, C2SWriteLogPacket::read)
+        ).add("bsync:publish", new PacketRegistry()
+                .add(PublishPacket.class, PublishPacket::new)
         )
         ;
     }

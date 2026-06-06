@@ -8,6 +8,7 @@ import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.bukkit.Bukkit;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -8,16 +8,23 @@ import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
+import dev.by1337.sync.server.channel.messages.ClientConnectMessage;
+import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
 import dev.by1337.sync.server.network.Connection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class ServerChannel {
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+
+public class  ServerChannel {
     private final Logger log;
     private final String id;
     private final EventLoopWorker eventLoop;
     private final Pipeline pipeline;
     private final DedicatedServer server;
+    private final List<SocketConnection> connections = new CopyOnWriteArrayList<>();
 
     public ServerChannel(String id, EventLoopWorker eventLoop, DedicatedServer server) {
         this.id = id;
@@ -33,7 +40,18 @@ public class ServerChannel {
     }
 
     public void handle(ChannelMessage packet, Connection connection) {
+        if (packet instanceof ClientConnectMessage(SocketConnection conn)){
+            connections.add(conn);
+        }else if (packet instanceof ClientDisconnectMessage(SocketConnection conn)){
+            connections.remove(conn);
+        }
         pipeline.execute(packet, lookup(connection));
+    }
+
+    public void forEachConnections(Consumer<dev.by1337.sync.common.channel.pipeline.Connection> c){
+        for (SocketConnection connection : connections) {
+            c.accept(lookup(connection));
+        }
     }
 
     private dev.by1337.sync.common.channel.pipeline.Connection lookup(SocketConnection connection) {
@@ -71,6 +89,11 @@ public class ServerChannel {
             @Override
             public ServerChannel channel() {
                 return self;
+            }
+
+            @Override
+            public String name() {
+                return self.id;
             }
 
             @Override

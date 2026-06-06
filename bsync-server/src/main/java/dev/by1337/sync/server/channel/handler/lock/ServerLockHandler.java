@@ -1,4 +1,4 @@
-package dev.by1337.sync.server.channel.handler;
+package dev.by1337.sync.server.channel.handler.lock;
 
 import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.request.IncomingRequest;

@@ -9,4 +9,5 @@ public interface ServerChannelRuntime extends ChannelRuntime {
     Connection lookup(SocketConnection connection);
     DedicatedServer server();
     ServerChannel channel();
+    String name();
 }

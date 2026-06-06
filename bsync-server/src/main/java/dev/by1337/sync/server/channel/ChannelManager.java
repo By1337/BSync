@@ -9,6 +9,7 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.handler.lock.ServerLockHandler;
+import dev.by1337.sync.server.channel.handler.pub.PublisherHandler;
 import dev.by1337.sync.server.channel.messages.ClientConnectMessage;
 import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
 import dev.by1337.sync.server.network.Connection;
@@ -73,9 +74,15 @@ public class ChannelManager {
                 channel.handle(new ClientConnectMessage(connection), connection);
             } else {
                 if (channelType.equals(ChannelType.LOCKS)) {
-                    channel = addChannel(id, c -> {
-                        c.pipeline().addLast("locks", new ServerLockHandler());
-                    });
+                    channel = addChannel(id, c ->
+                            c.pipeline().addLast("locks", new ServerLockHandler())
+                    );
+                    connection.write(new S2CChannelStatsPacket(id, true));
+                    channel.handle(new ClientConnectMessage(connection), connection);
+                } else if (channelType.equals(ChannelType.PUBLISHER)) {
+                    channel = addChannel(id, c ->
+                            c.pipeline().addLast("publisher", new PublisherHandler())
+                    );
                     connection.write(new S2CChannelStatsPacket(id, true));
                     channel.handle(new ClientConnectMessage(connection), connection);
                 } else {
