@@ -7,11 +7,11 @@ import dev.by1337.sync.common.packet.ExpectsResponse;
 import java.util.function.Consumer;
 
 public class IncomingRequest implements ChannelMessage {
-    private final Packet msg;
-    private final Consumer<Packet> out;
+    private final ChannelMessage msg;
+    private final Consumer<ChannelMessage> out;
     public int counter = 0;
 
-    public IncomingRequest(Packet msg, Consumer<Packet> out) {
+    public IncomingRequest(ChannelMessage msg, Consumer<ChannelMessage> out) {
         this.msg = msg;
         this.out = out;
     }
@@ -20,7 +20,7 @@ public class IncomingRequest implements ChannelMessage {
         return msg;
     }
 
-    public <T extends Packet> void response(ExpectsResponse<T> type, T response){
+    public <T extends ChannelMessage> void response(ExpectsResponse<T> type, T response){
         out.accept(response);
     }
 }

@@ -1,11 +1,10 @@
 package dev.by1337.sync.common.channel.handler.request;
 
-import dev.by1337.sync.common.callback.PacketCallback;
+import dev.by1337.sync.common.callback.ResponseFuture;
 import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.pipeline.ChannelContext;
 import dev.by1337.sync.common.channel.pipeline.ChannelHandler;
 import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
-import dev.by1337.sync.common.channel.pipeline.Connection;
 import dev.by1337.sync.common.packet.ExpectsResponse;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.impl.AckRequest;
@@ -16,11 +15,9 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.PriorityQueue;
-import java.util.function.BiConsumer;
 
 public class RequestsHandler implements ChannelHandler {
     private Logger log = DEFAULT_LOGGER;
@@ -50,7 +47,7 @@ public class RequestsHandler implements ChannelHandler {
                 requestsQueue.poll();
                 if (requests.remove(request.id) != null) {
                     try {
-                        request.callback.accept(null, null);
+                        request.callback.complete(null);
                     } catch (Exception err) {
                         log.error("Failed to accept response", err);
                     }
@@ -70,24 +67,26 @@ public class RequestsHandler implements ChannelHandler {
         if (msg instanceof RequestMsg<?> r) {
             if (closing) {
                 try {
-                    r.consumer().accept(null, null);
+                    r.consumer().complete(null);
                 } catch (Exception e) {
                     log.error("Failed to accept empty response cuz closing", e);
                 }
             } else {
-                ctx.connection().write(new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet()));
+                ctx.connection().write(
+                        new RequestPacket(newRequest(r.consumer(), r.timeoutMs()).id, r.packet())
+                );
             }
         } else if (msg instanceof ResponsePacket r) {
             var v = requests.remove(r.uid());
             if (v != null) {
                 // noinspection unchecked
-                PacketCallback<Packet> callback = (PacketCallback<Packet>) v.callback;
+                ResponseFuture<ChannelMessage> callback = (ResponseFuture<ChannelMessage>) v.callback;
                 try {
-                    callback.accept(r.payload(), ctx.connection());
+                    callback.complete(r.payload());
                 } catch (ClassCastException e) {
                     log.error("Bad response type", e);
                     try {
-                        callback.accept(null, ctx.connection());
+                        callback.complete(null);
                     } catch (Exception e1) {
                         log.error("Failed to accept response", e1);
                     }
@@ -116,7 +115,7 @@ public class RequestsHandler implements ChannelHandler {
         closing = true;
         requests.values().forEach(v -> {
             try {
-                v.callback.accept(null, null);
+                v.callback.complete(null);
             } catch (Exception e) {
                 log.error("Failed to accept empty response cuz closing", e);
             }
@@ -125,7 +124,7 @@ public class RequestsHandler implements ChannelHandler {
         requests.clear();
     }
 
-    private RequestHolder newRequest(PacketCallback<?> consumer, long timeoutMs) {
+    private RequestHolder newRequest(ResponseFuture<?> consumer, long timeoutMs) {
         var id = requestId++;
         var v = new RequestHolder(id, System.currentTimeMillis() + timeoutMs, consumer);
         requests.put(id, v);
@@ -134,14 +133,14 @@ public class RequestsHandler implements ChannelHandler {
     }
 
     @Contract(pure = true)
-    public static ChannelMessage withAck(Packet packet, BiConsumer<@NotNull Boolean, @Nullable Connection> c, long timeoutMs) {
-        return new RequestMsg<>(new AckRequest(packet), ((ack, connection) -> {
-            c.accept(ack != null, connection);
-        }), timeoutMs);
+    public static ChannelMessage withAck(Packet packet, ResponseFuture<Boolean> c, long timeoutMs) {
+        ResponseFuture<AckRequest.AckResponse> f = new ResponseFuture<>();
+        f.then((v) -> c.complete(v != null));
+        return new RequestMsg<>(new AckRequest(packet), f, timeoutMs);
     }
 
     @Contract(pure = true)
-    public static <E extends Packet, T extends ExpectsResponse<E> & Packet> RequestMsg<E> request(T packet, PacketCallback<E> consumer, long timeoutMs) {
+    public static <E extends ChannelMessage, T extends ExpectsResponse<E> & ChannelMessage> RequestMsg<E> request(T packet, ResponseFuture<E> consumer, long timeoutMs) {
         return new RequestMsg<>(packet, consumer, timeoutMs);
     }
 
@@ -149,9 +148,9 @@ public class RequestsHandler implements ChannelHandler {
     public static class RequestHolder implements Comparable<RequestHolder> {
         private final int id;
         private final long timeoutAt;
-        private final PacketCallback<?> callback;
+        private final ResponseFuture<?> callback;
 
-        public RequestHolder(int id, long timeoutAt, PacketCallback<?> callback) {
+        public RequestHolder(int id, long timeoutAt, ResponseFuture<?> callback) {
             this.id = id;
             this.timeoutAt = timeoutAt;
             this.callback = callback;

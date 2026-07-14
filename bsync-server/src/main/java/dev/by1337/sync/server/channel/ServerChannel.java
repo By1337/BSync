@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
-public class  ServerChannel {
+public class ServerChannel {
     private final Logger log;
     private final String id;
     private final EventLoopWorker eventLoop;
@@ -40,15 +40,15 @@ public class  ServerChannel {
     }
 
     public void handle(ChannelMessage packet, Connection connection) {
-        if (packet instanceof ClientConnectMessage(SocketConnection conn)){
+        if (packet instanceof ClientConnectMessage(SocketConnection conn)) {
             connections.add(conn);
-        }else if (packet instanceof ClientDisconnectMessage(SocketConnection conn)){
+        } else if (packet instanceof ClientDisconnectMessage(SocketConnection conn)) {
             connections.remove(conn);
         }
         pipeline.execute(packet, lookup(connection));
     }
 
-    public void forEachConnections(Consumer<dev.by1337.sync.common.channel.pipeline.Connection> c){
+    public void forEachConnections(Consumer<dev.by1337.sync.common.channel.pipeline.Connection> c) {
         for (SocketConnection connection : connections) {
             c.accept(lookup(connection));
         }
@@ -57,8 +57,11 @@ public class  ServerChannel {
     private dev.by1337.sync.common.channel.pipeline.Connection lookup(SocketConnection connection) {
         return new dev.by1337.sync.common.channel.pipeline.Connection() {
             @Override
-            public void write(Packet msg) {
-                connection.write(new ChanneledPacket(id, msg));
+            public void write(ChannelMessage msg) {
+                if (msg instanceof Packet packet)
+                    connection.write(new ChanneledPacket(id, packet));
+                else
+                    throw new IllegalArgumentException(this + " only for packets! " + msg);
             }
 
             @Override
@@ -112,9 +115,11 @@ public class  ServerChannel {
             }
         });
     }
+
     public void close() {
         pipeline.closeAll();
     }
+
     public String id() {
         return id;
     }

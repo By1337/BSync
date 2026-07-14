@@ -2,10 +2,11 @@ package dev.by1337.sync.common.packet;
 
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-public class PacketRegistries {
+public class PacketRegistries implements Iterable<PacketRegistry>{
     private final Map<String, PacketRegistry> name2registry = new HashMap<>();
     private final List<PacketRegistry> id2registry = new ArrayList<>();
     private final Object2ObjectOpenHashMap<Class<? extends Packet>, PacketRegistry> packet2registry = new Object2ObjectOpenHashMap<>();
@@ -37,5 +38,10 @@ public class PacketRegistries {
         int id = registry2id.getInt(registry);
         if (id == -1) throw new IllegalArgumentException("Unregistered registry " + id);
         return id;
+    }
+
+    @Override
+    public @NotNull Iterator<PacketRegistry> iterator() {
+        return name2registry.values().iterator();
     }
 }

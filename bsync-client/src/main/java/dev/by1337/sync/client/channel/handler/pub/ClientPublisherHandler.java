@@ -11,7 +11,7 @@ import dev.by1337.sync.common.packet.impl.a2a.PublishPacket;
 import java.util.function.Consumer;
 
 public class ClientPublisherHandler implements ChannelHandler, Consumer<byte[]> {
-    private Connection freedom;
+    private Connection remote;
     private boolean closing;
     private final Consumer<byte[]> accept;
 
@@ -23,7 +23,7 @@ public class ClientPublisherHandler implements ChannelHandler, Consumer<byte[]> 
     @Override
     public void init(ChannelRuntime runtime) {
         if (!(runtime instanceof ClientChannelRuntime ccr)) throw new IllegalArgumentException("Invalid runtime type");
-        freedom = ccr.freedom();
+        remote = ccr.remote();
     }
 
     @Override
@@ -42,6 +42,6 @@ public class ClientPublisherHandler implements ChannelHandler, Consumer<byte[]> 
 
     @Override
     public void accept(byte[] bytes) {
-        freedom.write(new PublishPacket(bytes));
+        remote.write(new PublishPacket(bytes));
     }
 }

@@ -1,7 +1,10 @@
 package dev.by1337.sync.common.channel.pipeline;
 
 import dev.by1337.sync.common.channel.ChannelMessage;
+import dev.by1337.sync.common.channel.handler.request.RequestsHandler;
+import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.work.EventLoopWorker;
+import org.jetbrains.annotations.ApiStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,11 +15,36 @@ public class Pipeline {
     private static final Logger log = LoggerFactory.getLogger(Pipeline.class);
     private Entry[] handlers = new Entry[0];
     private final EventLoopWorker eventLoop;
+    private final Connection loop = new Connection() {
+        final SocketConnection socket = this::write;
+
+        @Override
+        public void write(ChannelMessage msg) {
+            execute(msg, this);
+        }
+
+        @Override
+        public SocketConnection transport() {
+            return socket;
+        }
+    };
+
 
     public Pipeline(EventLoopWorker eventLoop) {
         this.eventLoop = eventLoop;
+        addLast("$requests", new RequestsHandler());
     }
 
+    @ApiStatus.Experimental
+    public Connection local() {
+        return loop;
+    }
+
+    public void schedule(ChannelMessage msg, Connection out) {
+        eventLoop.schedule(() -> {
+            execute0(msg, 0, out);
+        });
+    }
 
     public void schedule(ChannelMessage msg, Connection out, long ms) {
         eventLoop.schedule(() -> {
@@ -37,7 +65,11 @@ public class Pipeline {
             return;
         }
         try (var ctx = new ChannelContextImpl(connection, idx, this)) {
-            handlers[idx].handler.handle(ctx, msg);
+            try {
+                handlers[idx].handler.handle(ctx, msg);
+            } catch (Exception e) {
+                log.error("Failed to handle message in handler {}", handlers[idx].name, e);
+            }
         }
     }
 
@@ -69,6 +101,13 @@ public class Pipeline {
             if (handler.name.equals(name)) return handler.handler;
         }
         throw new IllegalArgumentException("Unknown handler " + name);
+    }
+
+    public <T extends ChannelHandler> T get(Class<T> t) {
+        for (Entry handler : handlers) {
+            if (t.isAssignableFrom(handler.handler.getClass())) return t.cast(handler.handler);
+        }
+        throw new IllegalArgumentException("Unknown handler " + t);
     }
 
 

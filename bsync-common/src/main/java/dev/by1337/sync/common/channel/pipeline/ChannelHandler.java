@@ -9,7 +9,9 @@ public interface ChannelHandler {
 
     void init(ChannelRuntime runtime);
 
-    void handle(ChannelContext ctx, ChannelMessage msg);
+    void handle(ChannelContext ctx, ChannelMessage msg) throws Exception;
 
     void close();
+
+
 }

@@ -3,6 +3,7 @@ package dev.by1337.sync.client.channel;
 import dev.by1337.sync.client.channel.status.ChannelActiveMessage;
 import dev.by1337.sync.client.channel.status.ChannelInactiveMessage;
 import dev.by1337.sync.client.network.Connection;
+import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
@@ -41,11 +42,15 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     }
 
     @Override
-    public void write(Packet msg) {
-        if (channelActive.get())
-            connection.write(new ChanneledPacket(id, msg));
-        else
-            log.warn("Drop packet {} cuz has no connection!", msg);
+    public void write(ChannelMessage msg) {
+        if (msg instanceof Packet packet) {
+            if (channelActive.get())
+                connection.write(new ChanneledPacket(id, packet));
+            else
+                log.warn("Drop packet {} cuz has no connection!", msg);
+        } else {
+            throw new IllegalArgumentException(this + " only for packets! " + msg);
+        }
     }
 
     @Override
@@ -60,7 +65,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         var self = this;
         pipeline.registerAll(new ClientChannelRuntime() {
             @Override
-            public dev.by1337.sync.common.channel.pipeline.Connection freedom() {
+            public dev.by1337.sync.common.channel.pipeline.Connection remote() {
                 return self;
             }
 

@@ -2,7 +2,6 @@ package dev.by1337.sync.server.channel.handler.lock;
 
 import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.request.IncomingRequest;
-import dev.by1337.sync.common.channel.handler.request.RequestsHandler;
 import dev.by1337.sync.common.channel.pipeline.*;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
@@ -186,29 +185,30 @@ public class ServerLockHandler implements ChannelHandler {
         var map = this.mails.get(key);
         if (map == null || map.isEmpty()) return;
         var mail = map.firstEntry();
-        RequestsHandler.request(new S2CMailAcceptPacket(key, mail.getValue(), lock.token), (result, conn) -> {
-            if (conn != null && result instanceof C2SMailResponsePacket response) {
-                if (!lockMap.isOwner(key, conn.transport(), response.token())) {
-                    log.error("Клиент {} принял mail без блокировки! {} {}", conn.transport(), mail, response);
-                    return;
-                }
-                if (response.isAccepted()) {
-                    var mails = this.mails.get(key);
-                    if (mails == null || mails.remove(mail.getKey()) == null) {
-                        log.error("Клиент {} принял не существующий mail {}", connection, mail);
-                    }
-                    if (mails != null) {
-                        if (!mails.isEmpty()) {
-                            sendMail(conn, key);
-                        } else {
-                            this.mails.remove(key);
+        new S2CMailAcceptPacket(key, mail.getValue(), lock.token).request(pipeline, connection)
+                .then((result) -> {
+                    if (result instanceof C2SMailResponsePacket response) {
+                        if (!lockMap.isOwner(key, connection.transport(), response.token())) {
+                            log.error("Клиент {} принял mail без блокировки! {} {}", connection.transport(), mail, response);
+                            return;
                         }
+                        if (response.isAccepted()) {
+                            var mails = this.mails.get(key);
+                            if (mails == null || mails.remove(mail.getKey()) == null) {
+                                log.error("Клиент {} принял не существующий mail {}", connection, mail);
+                            }
+                            if (mails != null) {
+                                if (!mails.isEmpty()) {
+                                    sendMail(connection, key);
+                                } else {
+                                    this.mails.remove(key);
+                                }
+                            }
+                        }
+                    } else {
+                        log.error("Client {} не ответил на S2CMailAcceptPacket {}", connection, result);
                     }
-                }
-            } else {
-                log.error("Client {} не ответил на S2CMailAcceptPacket {}", conn, result);
-            }
-        }, 10_000).execute(pipeline, connection);
+                });
     }
 
     @Override

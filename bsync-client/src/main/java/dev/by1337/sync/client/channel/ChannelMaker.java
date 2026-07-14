@@ -23,7 +23,7 @@ public class ChannelMaker {
             var locks = new ClientLocksHandler();
             locks.lockManager(manager);
             cc.pipeline()
-                    .addLast("requests", new RequestsHandler())
+                    //.addLast("requests", new RequestsHandler())
                     .addLast("locks", locks);
         });
         return (ClientLocksHandler) v.pipeline().getHandler("locks");
@@ -32,7 +32,7 @@ public class ChannelMaker {
     public static Consumer<byte[]> createPublisher(Connection c, String id, Consumer<byte[]> reader) {
         var v = c.addChannel(id, ChannelType.PUBLISHER, cc -> {
             cc.pipeline()
-                    .addLast("requests", new RequestsHandler())
+                   // .addLast("requests", new RequestsHandler())
                     .addLast("publisher", new ClientPublisherHandler(reader));
         });
         return (ClientPublisherHandler) v.pipeline().getHandler("publisher");

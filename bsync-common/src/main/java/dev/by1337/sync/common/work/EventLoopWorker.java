@@ -37,6 +37,9 @@ public final class EventLoopWorker {
         LockSupport.unpark(thread);
     }
 
+    public void schedule(Runnable runnable) {
+        schedule(runnable, 0);
+    }
     public void schedule(Runnable runnable, long ms) {
         if (ms <= 0){
             if (!queue.offer(runnable)) {
