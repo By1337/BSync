@@ -10,7 +10,7 @@ public interface PlayerDataRepository<T> {
     static <T> PlayerDataRepository<T> create(String repo, Plugin plugin, DataManager<T> dataManager) {
         //todo bsync
         return new FilePlayerDataRepository<>(
-                new File("./bsync./" + plugin.getName() + "/" + repo),
+                new File("./bsync/" + plugin.getName() + "/" + repo),
                 plugin,
                 dataManager
         );

@@ -99,7 +99,7 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
         T user;
         if (!closing.get() && (user = Wrapped.unwrap(users.get(key))) != null) {
             try {
-                dataManager.acceptMail(user, mail);
+                dataManager.acceptMail(user, mail, key);
             } catch (Exception e) {
                 log.error("Failed to accept mail! {}", mail, e);
             }
@@ -133,7 +133,7 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
 
     private void write(UUID key, T data) {
         try {
-            byte[] snapshot = dataManager.write(data);
+            byte[] snapshot = dataManager.write(data, key);
             storage.write(key, snapshot);
         } catch (Exception e) {
             log.error("Failed to write player data {}", key, e);
@@ -202,12 +202,12 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
         }
         byte[] payload = storage.read(key);
         try {
-            T userData = dataManager.read(payload);
+            T userData = dataManager.read(payload, key);
             users.put(key, new Wrapped<>(userData));
             var mails = storage.readAllMailsAndDelete(key);
             for (String mail : mails) {
                 try {
-                    dataManager.acceptMail(userData, mail);
+                    dataManager.acceptMail(userData, mail, key);
                 } catch (Exception e) {
                     log.error("Failed to accept mail {}", mail, e);
                 }
