@@ -1,4 +1,4 @@
-package dev.by1337.sync.server.database;
+package dev.by1337.sync.bd;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -10,9 +10,15 @@ import java.util.concurrent.TimeUnit;
 public class Database {
 
     private final HikariDataSource dataSource;
+    private final String h2Folder;
 
     public Database(Database.DatabaseConfig cfg) {
+        this(cfg, "./");
+    }
+
+    public Database(Database.DatabaseConfig cfg, String h2Folder) {
         dataSource = new HikariDataSource(createDbConfig(cfg));
+        this.h2Folder = h2Folder.endsWith("/") ? h2Folder : h2Folder + "/";
     }
 
     public HikariDataSource dataSource() {
@@ -34,7 +40,7 @@ public class Database {
         hikariConfig.setMaxLifetime(1800000);
 
         if (cfg.type.equals("h2")) {
-            hikariConfig.setJdbcUrl("jdbc:h2:file:./bsync-" + cfg.database +
+            hikariConfig.setJdbcUrl("jdbc:h2:file:" + h2Folder + "h2-" + cfg.database +
                     ";MODE=MySQL" +
                     ";DB_CLOSE_DELAY=-1" +
                     ";DATABASE_TO_UPPER=false");

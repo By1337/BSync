@@ -1,17 +1,18 @@
-package dev.by1337.sync.server.database.table;
+package dev.by1337.sync.bd.repo;
 
 import com.zaxxer.hikari.HikariDataSource;
+import dev.by1337.sync.bd.table.K2VTable;
 import org.jspecify.annotations.NonNull;
 
 import java.sql.*;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class UuidBlobRepository implements K2VTable<UUID, byte[]> {
+public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
     private final HikariDataSource dataSource;
     private final String tableName;
 
-    public UuidBlobRepository(HikariDataSource dataSource, String tableName) {
+    public UUID2MediumBLOBRepository(HikariDataSource dataSource, String tableName) {
         this.dataSource = dataSource;
         this.tableName = tableName;
         try {

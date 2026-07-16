@@ -6,7 +6,7 @@ import dev.by1337.sync.server.channel.ChannelManager;
 import dev.by1337.sync.server.config.Config;
 import dev.by1337.sync.server.console.CommandManager;
 import dev.by1337.sync.server.console.TerminalReader;
-import dev.by1337.sync.server.database.Database;
+import dev.by1337.sync.bd.Database;
 import dev.by1337.sync.server.metrics.MetricFormatter;
 import dev.by1337.sync.server.metrics.Metrics;
 import dev.by1337.sync.server.network.ClientList;

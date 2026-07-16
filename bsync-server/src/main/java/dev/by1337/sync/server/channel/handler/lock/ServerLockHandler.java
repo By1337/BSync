@@ -11,8 +11,7 @@ import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.ServerChannelRuntime;
 import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
-import dev.by1337.sync.server.database.K2VCache;
-import dev.by1337.sync.server.database.table.UuidBlobRepository;
+import dev.by1337.sync.bd.table.K2VCache;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -47,7 +46,7 @@ public class ServerLockHandler implements ChannelHandler {
         eventLoop.schedule(this::tick, 10_000);
         server = runtime.server();
         blobRepository = new K2VCache<>(
-                new UuidBlobRepository(server.database().dataSource(), runtime.channel().id() + "_blob_repository")
+                new dev.by1337.sync.bd.repo.UUID2MediumBLOBRepository(server.database().dataSource(), runtime.channel().id() + "_blob_repository")
         );
     }
 

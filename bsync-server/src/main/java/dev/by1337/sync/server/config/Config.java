@@ -1,7 +1,7 @@
 package dev.by1337.sync.server.config;
 
 import dev.by1337.sync.common.security.Ed25519;
-import dev.by1337.sync.server.database.Database;
+import dev.by1337.sync.bd.Database;
 import dev.by1337.yaml.YamlMap;
 import dev.by1337.yaml.decoder.RecordYamlDecoder;
 import dev.by1337.yaml.decoder.YamlDecoder;

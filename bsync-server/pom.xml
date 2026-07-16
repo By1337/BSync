@@ -107,6 +107,12 @@
 
     <dependencies>
         <dependency>
+            <groupId>dev.by1337.sync</groupId>
+            <artifactId>bsync-bd</artifactId>
+            <version>1.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcutil-jdk18on</artifactId>
             <version>1.84</version>

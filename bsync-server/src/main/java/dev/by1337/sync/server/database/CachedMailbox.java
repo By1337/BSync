@@ -2,9 +2,7 @@ package dev.by1337.sync.server.database;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import dev.by1337.sync.server.database.table.K2VTable;
 import dev.by1337.sync.server.database.table.MailboxRepository;
-import org.jetbrains.annotations.Nullable;
 
 import java.sql.SQLException;
 import java.time.Duration;

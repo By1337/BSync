@@ -1,8 +1,7 @@
-package dev.by1337.sync.server.database;
+package dev.by1337.sync.bd.table;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import dev.by1337.sync.server.database.table.K2VTable;
 import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -27,8 +26,8 @@ public class K2VCache<K, V> implements K2VTable<K, V> {
 
     @Override
     public void put(@NonNull K key, @NonNull V value) throws SQLException {
-        cache.put(key, value);
         table.put(key, value);
+        cache.put(key, value);
     }
 
     @Override

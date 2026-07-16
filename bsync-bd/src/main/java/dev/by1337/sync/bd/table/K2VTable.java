@@ -1,4 +1,4 @@
-package dev.by1337.sync.server.database.table;
+package dev.by1337.sync.bd.table;
 
 import org.jetbrains.annotations.NotNull;
 
