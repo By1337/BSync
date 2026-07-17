@@ -6,7 +6,7 @@
         <artifactId>BSync</artifactId>
         <version>1.0</version>
     </parent>
-    <artifactId>bsync-bd</artifactId>
+    <artifactId>bsync-db</artifactId>
 
     <properties>
         <java.version>21</java.version>

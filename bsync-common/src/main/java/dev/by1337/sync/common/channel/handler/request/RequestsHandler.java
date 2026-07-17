@@ -96,10 +96,10 @@ public class RequestsHandler implements ChannelHandler {
             }
         } else if (msg instanceof RequestPacket r) {
             if (r.payload() instanceof AckRequest ack) {
-                ctx.pipeline().execute(ack.payload(), ctx.connection());
+                ctx.execute(ack.payload(), ctx.connection());
                 ctx.connection().write(new ResponsePacket(r.uid(), AckRequest.AckResponse.INSTANCE));
             } else {
-                ctx.pipeline().execute(
+                ctx.execute(
                         new IncomingRequest(r.payload(),
                                 result -> ctx.connection().write(new ResponsePacket(r.uid(), result))),
                         ctx.connection()

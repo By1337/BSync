@@ -21,6 +21,6 @@
         <module>bsync-server</module>
         <module>bsync-bukkit</module>
         <module>bsync-k2v</module>
-        <module>bsync-bd</module>
+        <module>bsync-db</module>
     </modules>
 </project>

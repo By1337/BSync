@@ -8,4 +8,7 @@ public interface ChannelContext {
     Pipeline pipeline();
 
     Connection connection();
+    default void execute(ChannelMessage msg, Connection out){
+        pipeline().execute(msg, out);
+    }
 }

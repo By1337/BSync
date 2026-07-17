@@ -7,18 +7,18 @@ import dev.by1337.yaml.decoder.YamlDecoder;
 
 import java.util.concurrent.TimeUnit;
 
-public class Database {
+public class DatabaseSource {
 
     private final HikariDataSource dataSource;
     private final String h2Folder;
 
-    public Database(Database.DatabaseConfig cfg) {
+    public DatabaseSource(DatabaseSource.DatabaseConfig cfg) {
         this(cfg, "./");
     }
 
-    public Database(Database.DatabaseConfig cfg, String h2Folder) {
-        dataSource = new HikariDataSource(createDbConfig(cfg));
+    public DatabaseSource(DatabaseSource.DatabaseConfig cfg, String h2Folder) {
         this.h2Folder = h2Folder.endsWith("/") ? h2Folder : h2Folder + "/";
+        dataSource = new HikariDataSource(createDbConfig(cfg));
     }
 
     public HikariDataSource dataSource() {
@@ -29,7 +29,7 @@ public class Database {
         dataSource.close();
     }
 
-    private HikariConfig createDbConfig(Database.DatabaseConfig cfg) {
+    private HikariConfig createDbConfig(DatabaseSource.DatabaseConfig cfg) {
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setUsername(cfg.user);
         hikariConfig.setPassword(cfg.password);

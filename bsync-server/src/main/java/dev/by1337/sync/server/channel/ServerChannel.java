@@ -32,7 +32,6 @@ public class ServerChannel {
         log = LoggerFactory.getLogger(id + "|Channel");
         pipeline = new Pipeline(eventLoop);
         this.server = server;
-        pipeline.addLast("requests", new RequestsHandler());
     }
 
     public Pipeline pipeline() {

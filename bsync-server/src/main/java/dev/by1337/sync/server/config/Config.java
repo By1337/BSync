@@ -1,7 +1,7 @@
 package dev.by1337.sync.server.config;
 
 import dev.by1337.sync.common.security.Ed25519;
-import dev.by1337.sync.bd.Database;
+import dev.by1337.sync.bd.DatabaseSource;
 import dev.by1337.yaml.YamlMap;
 import dev.by1337.yaml.decoder.RecordYamlDecoder;
 import dev.by1337.yaml.decoder.YamlDecoder;
@@ -18,14 +18,14 @@ public class Config {
     public static final YamlDecoder<Config> DECODER = RecordYamlDecoder.mapOf(
             Config::new,
             YamlDecoder.INT.fieldOf("port"),
-            Database.DatabaseConfig.DECODER.fieldOf("database")
+            DatabaseSource.DatabaseConfig.DECODER.fieldOf("database")
     );
     private static final Logger log = LoggerFactory.getLogger(Config.class);
     private PublicKey authorized_key;
     public int tcp_port = 8013;
-    public final Database.DatabaseConfig database_config;
+    public final DatabaseSource.DatabaseConfig database_config;
 
-    public Config(int tcp_port, Database.DatabaseConfig database_config) {
+    public Config(int tcp_port, DatabaseSource.DatabaseConfig database_config) {
         this.tcp_port = tcp_port;
         this.database_config = database_config;
         try {

@@ -3,13 +3,13 @@ package dev.by1337.sync.bd.table;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.jetbrains.annotations.NotNull;
-import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public class K2VCache<K, V> implements K2VTable<K, V> {
     private static final Logger log = LoggerFactory.getLogger(K2VCache.class);
@@ -17,21 +17,28 @@ public class K2VCache<K, V> implements K2VTable<K, V> {
     private final Cache<K, V> cache;
 
     public K2VCache(K2VTable<K, V> table) {
-        this.table = table;
-        cache = Caffeine.<K, V>newBuilder()
+        this(table, b -> b
                 .maximumSize(100_000)
                 .expireAfterAccess(Duration.ofMinutes(5))
-                .build();
+        );
+    }
+
+    public K2VCache(K2VTable<K, V> table, Consumer<Caffeine<K, V>> c) {
+        this.table = table;
+        Caffeine<K, V> b = (Caffeine<K, V>) Caffeine.newBuilder();
+        c.accept(b);
+        cache = b.build();
+
     }
 
     @Override
-    public void put(@NonNull K key, @NonNull V value) throws SQLException {
+    public void put(@NotNull K key, @NotNull V value) throws SQLException {
         table.put(key, value);
         cache.put(key, value);
     }
 
     @Override
-    public @NotNull Optional<V> get(@NonNull K key) throws SQLException {
+    public @NotNull Optional<V> get(@NotNull K key) throws SQLException {
         return Optional.ofNullable(cache.get(key, k -> {
             try {
                 return table.get(k).orElse(null);
@@ -43,14 +50,22 @@ public class K2VCache<K, V> implements K2VTable<K, V> {
     }
 
     @Override
-    public boolean delete(@NonNull K key) throws SQLException {
+    public boolean delete(@NotNull K key) throws SQLException {
         cache.invalidate(key);
         return table.delete(key);
     }
 
     @Override
-    public boolean contains(@NonNull K key) throws SQLException {
+    public boolean contains(@NotNull K key) throws SQLException {
         return cache.getIfPresent(key) != null || table.contains(key);
+    }
+
+    public K2VTable<K, V> table() {
+        return table;
+    }
+
+    public Cache<K, V> cache() {
+        return cache;
     }
 
     @Override

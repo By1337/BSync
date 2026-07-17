@@ -6,7 +6,7 @@ import dev.by1337.sync.server.channel.ChannelManager;
 import dev.by1337.sync.server.config.Config;
 import dev.by1337.sync.server.console.CommandManager;
 import dev.by1337.sync.server.console.TerminalReader;
-import dev.by1337.sync.bd.Database;
+import dev.by1337.sync.bd.DatabaseSource;
 import dev.by1337.sync.server.metrics.MetricFormatter;
 import dev.by1337.sync.server.metrics.Metrics;
 import dev.by1337.sync.server.network.ClientList;
@@ -37,7 +37,7 @@ public class DedicatedServer {
     private final long startMillis;
     private final ChannelManager channelManager;
     private Thread terminalThread;
-    private final Database database;
+    private final DatabaseSource database;
     private final boolean badShutdown;
 
     public DedicatedServer() {
@@ -64,7 +64,7 @@ public class DedicatedServer {
         if (testPort != -1) {
             config.tcp_port = testPort;
         }
-        database = new Database(config.database_config);
+        database = new DatabaseSource(config.database_config);
         clientList = new ClientList();
         connectionListener = new ConnectionListener(this);
         var workers = new EventLoopWorkers("server-worker-%d", 1);
@@ -160,7 +160,7 @@ public class DedicatedServer {
         channelManager.onDisconnect(connection);
     }
 
-    public Database database() {
+    public DatabaseSource database() {
         return database;
     }
 

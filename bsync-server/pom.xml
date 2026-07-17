@@ -108,7 +108,7 @@
     <dependencies>
         <dependency>
             <groupId>dev.by1337.sync</groupId>
-            <artifactId>bsync-bd</artifactId>
+            <artifactId>bsync-db</artifactId>
             <version>1.0</version>
             <scope>compile</scope>
         </dependency>
