@@ -3,6 +3,7 @@ package dev.by1337.sync.server;
 import dev.by1337.sync.bd.DatabaseSource;
 import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorkers;
+import dev.by1337.sync.server.addon.AddonLoader;
 import dev.by1337.sync.server.channel.ChannelManager;
 import dev.by1337.sync.server.config.Config;
 import dev.by1337.sync.server.console.CommandManager;
@@ -38,6 +39,7 @@ public class DedicatedServer {
     private Thread terminalThread;
     private final DatabaseSource database;
     private final boolean badShutdown;
+    private final AddonLoader addonLoader;
 
     public DedicatedServer() {
         this(-1);
@@ -58,7 +60,8 @@ public class DedicatedServer {
             new File("./server.lock").delete();
             throw new RuntimeException("Failed to create lock file!", e);
         }
-
+        addonLoader = new AddonLoader(new File("./addons"), this);
+        addonLoader.findAddons();
         config = Config.DECODER.decode(YamlMap.load(saveResourceToFile("config.yml")).get()).getOrThrow();
         if (testPort != -1) {
             config.tcp_port = testPort;
@@ -68,6 +71,7 @@ public class DedicatedServer {
         connectionListener = new ConnectionListener(this);
         var workers = new EventLoopWorkers("server-worker-%d", 1);
         channelManager = new ChannelManager(workers, this);
+        addonLoader.enableAll();
         running = true;
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
         commandManager = new CommandManager();
@@ -114,6 +118,7 @@ public class DedicatedServer {
     public void shutdown() {
         if (!running) return;
         running = false;
+        addonLoader.disableAll();
         BSUtils.safe(channelManager::close);
         BSUtils.safe(connectionListener::stop);
         try {
