@@ -1,18 +1,17 @@
 package dev.by1337.sync.server;
 
+import dev.by1337.sync.bd.DatabaseSource;
 import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import dev.by1337.sync.server.channel.ChannelManager;
 import dev.by1337.sync.server.config.Config;
 import dev.by1337.sync.server.console.CommandManager;
 import dev.by1337.sync.server.console.TerminalReader;
-import dev.by1337.sync.bd.DatabaseSource;
 import dev.by1337.sync.server.metrics.MetricFormatter;
 import dev.by1337.sync.server.metrics.Metrics;
 import dev.by1337.sync.server.network.ClientList;
 import dev.by1337.sync.server.network.Connection;
 import dev.by1337.sync.server.network.ConnectionListener;
-import dev.by1337.sync.server.spark.SparkHook;
 import dev.by1337.yaml.YamlMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -73,11 +72,10 @@ public class DedicatedServer {
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
         commandManager = new CommandManager();
         startMillis = System.currentTimeMillis();
-        new SparkHook(this);
 
         workers.forEach(worker -> Metrics.METRICS.create(worker.name(), d -> {
             var precent = (d / 1_000_000_000.0) * 100D;
-            var v = String.format("%.3f", precent)+ '%';
+            var v = String.format("%.3f", precent) + '%';
             if (precent >= 10D) {
                 Metrics.METRICS.dump(log);
             }
