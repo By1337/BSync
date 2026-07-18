@@ -6,17 +6,15 @@ import dev.by1337.sync.bd.table.K2VTable;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
-import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.UUID;
 import java.util.function.Consumer;
 
-public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
+public final class Int2MediumBLOBRepository implements K2VTable<Integer, byte[]> {
     private final HikariDataSource dataSource;
     private final String tableName;
 
-    public UUID2VarChar16Repository(HikariDataSource dataSource, String tableName) {
+    public Int2MediumBLOBRepository(HikariDataSource dataSource, String tableName) {
         this.dataSource = dataSource;
         this.tableName = tableName;
         try {
@@ -29,11 +27,11 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
     public void createTable() throws SQLException {
         String sql = """
                 CREATE TABLE IF NOT EXISTS `%s` (
-                    `id` BINARY(16) NOT NULL,
+                    `id` INT NOT NULL,
                     `updated_at` TIMESTAMP NOT NULL
                         DEFAULT CURRENT_TIMESTAMP
                         ON UPDATE CURRENT_TIMESTAMP,
-                    `data` VARCHAR(16) NOT NULL,
+                    `data` MEDIUMBLOB NOT NULL,
                 
                     PRIMARY KEY (`id`)
                 ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC
@@ -45,7 +43,22 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
             statement.execute(sql);
         }
     }
-    public void putAll(Queue<K2VPair<UUID, String>> queue, int limit, Consumer<K2VPair<UUID, String>> c) throws SQLException {
+
+    public int getMaxId() throws SQLException {
+        String sql = "SELECT MAX(id) FROM %s;".formatted(tableName);
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+            return 0;
+        }
+    }
+
+    public void putAll(Queue<K2VPair<Integer, byte[]>> queue, int limit, Consumer<K2VPair<Integer, byte[]>> c) throws SQLException {
         if (queue.isEmpty()) return;
         String sql = """
                 INSERT INTO `%s` (`id`, `data`)
@@ -59,10 +72,10 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
 
             connection.setAutoCommit(false);
 
-            K2VPair<UUID, String> p;
-            while (limit-- > 0 && (p = queue.poll()) != null){
-                statement.setBytes(1, UUIDUtil.uuidToBytes(p.key));
-                statement.setString(2, p.value);
+            K2VPair<Integer, byte @NotNull []> p;
+            while (limit-- > 0 && (p = queue.poll()) != null) {
+                statement.setInt(1, p.key);
+                statement.setBytes(2, p.value);
                 c.accept(p);
                 statement.addBatch();
             }
@@ -72,7 +85,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
         }
     }
 
-    public void put(@NotNull UUID uuid, @NotNull String data) throws SQLException {
+    public void put(@NotNull Integer id, byte @NotNull [] data) throws SQLException {
         String sql = """
                 INSERT INTO `%s` (`id`, `data`)
                 VALUES (?, ?)
@@ -83,14 +96,14 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
-            statement.setString(2, data);
+            statement.setInt(1, id);
+            statement.setBytes(2, data);
 
             statement.executeUpdate();
         }
     }
 
-    public @NotNull Optional<String> get(@NotNull UUID uuid) throws SQLException {
+    public @NotNull Optional<byte[]> get(@NotNull Integer key) throws SQLException {
         String sql = """
                 SELECT `data`
                 FROM `%s`
@@ -100,19 +113,19 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
+            statement.setInt(1, key);
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
                 }
 
-                return Optional.of(resultSet.getString(1));
+                return Optional.of(resultSet.getBytes(1));
             }
         }
     }
 
-    public boolean contains(@NotNull UUID uuid) throws SQLException {
+    public boolean contains(@NotNull Integer id) throws SQLException {
         String sql = """
                 SELECT 1
                 FROM `%s`
@@ -123,7 +136,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
+            statement.setInt(1, id);
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
@@ -136,7 +149,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
     }
 
     @Override
-    public void removeAll(Queue<UUID> queue, int limit, Consumer<UUID> c) throws SQLException{
+    public void removeAll(Queue<Integer> queue, int limit, Consumer<Integer> c) throws SQLException {
         String sql = """
                 DELETE FROM `%s`
                 WHERE `id` = ?
@@ -147,9 +160,9 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
 
             connection.setAutoCommit(false);
 
-            UUID p;
-            while (limit-- > 0 && (p = queue.poll()) != null){
-                statement.setBytes(1, UUIDUtil.uuidToBytes(p));
+            Integer p;
+            while (limit-- > 0 && (p = queue.poll()) != null) {
+                statement.setInt(1, p);
                 c.accept(p);
                 statement.addBatch();
             }
@@ -159,7 +172,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
         }
     }
 
-    public boolean remove(@NotNull UUID uuid) throws SQLException {
+    public boolean remove(Integer id) throws SQLException {
         String sql = """
                 DELETE FROM `%s`
                 WHERE `id` = ?
@@ -168,11 +181,9 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
+            statement.setInt(1, id);
 
             return statement.executeUpdate() > 0;
         }
     }
-
-
 }

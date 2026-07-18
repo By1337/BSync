@@ -1,12 +1,15 @@
 package dev.by1337.sync.bd.repo;
 
 import com.zaxxer.hikari.HikariDataSource;
+import dev.by1337.sync.bd.table.K2VPair;
 import dev.by1337.sync.bd.table.K2VTable;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
     private final HikariDataSource dataSource;
@@ -39,6 +42,33 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
              Statement statement = connection.createStatement()) {
 
             statement.execute(sql);
+        }
+    }
+
+    public void putAll(Queue<K2VPair<UUID, byte[]>> queue, int limit, Consumer<K2VPair<UUID, byte[]>> c) throws SQLException {
+        if (queue.isEmpty()) return;
+        String sql = """
+                INSERT INTO `%s` (`id`, `data`)
+                VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE
+                    `data` = VALUES(`data`)
+                """.formatted(tableName);
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            connection.setAutoCommit(false);
+
+            K2VPair<UUID, byte @NotNull []> p;
+            while (limit-- > 0 && (p = queue.poll()) != null){
+                statement.setBytes(1, UUIDUtil.uuidToBytes(p.key));
+                statement.setBytes(2, p.value);
+                c.accept(p);
+                statement.addBatch();
+            }
+
+            statement.executeBatch();
+            connection.commit();
         }
     }
 
@@ -105,7 +135,31 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
     public void close() throws SQLException {
     }
 
-    public boolean delete(@NotNull UUID uuid) throws SQLException {
+    @Override
+    public void removeAll(Queue<UUID> queue, int limit, Consumer<UUID> c) throws SQLException{
+        String sql = """
+                DELETE FROM `%s`
+                WHERE `id` = ?
+                """.formatted(tableName);
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            connection.setAutoCommit(false);
+
+            UUID p;
+            while (limit-- > 0 && (p = queue.poll()) != null){
+                statement.setBytes(1, UUIDUtil.uuidToBytes(p));
+                c.accept(p);
+                statement.addBatch();
+            }
+
+            statement.executeBatch();
+            connection.commit();
+        }
+    }
+
+    public boolean remove(@NotNull UUID uuid) throws SQLException {
         String sql = """
                 DELETE FROM `%s`
                 WHERE `id` = ?
