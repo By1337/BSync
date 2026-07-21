@@ -19,7 +19,7 @@ public interface Locks {
     void unlock(UUID key, int version);
 
     int lockAndLoadData(UUID key, BiConsumer<LockStatus, byte @Nullable []> callback);
-
+    boolean isReady();
     enum LockStatus {
         SUCCESS,
         FAILURE

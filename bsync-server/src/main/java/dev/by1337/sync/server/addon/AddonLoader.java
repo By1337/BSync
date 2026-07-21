@@ -15,7 +15,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class AddonLoader implements Closeable {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger("BCases#AddonLoader");
+    private static final Logger LOGGER = LoggerFactory.getLogger("AddonLoader");
     private final Map<String, AbstractAddon> addons = new ConcurrentHashMap<>();
     private final List<AddonClassLoader> loaders = new CopyOnWriteArrayList<>();
     private final File folder;

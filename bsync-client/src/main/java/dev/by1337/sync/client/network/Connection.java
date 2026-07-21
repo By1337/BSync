@@ -67,12 +67,15 @@ public class Connection implements SocketConnection {
     }
 
     public ClientChannel addChannel(String id, String channelType, Consumer<ClientChannel> init) {
+        return addChannel(id, channelType, init, workers.getNext());
+    }
+    public ClientChannel addChannel(String id, String channelType, Consumer<ClientChannel> init, EventLoopWorker worker) {
         if (closing.get()) throw new IllegalStateException("Connection is closed");
         if (channels.containsKey(id)) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
         ClientChannel channel = new ClientChannel(
-                this, id, workers.getNext(), channelType
+                this, id, worker, channelType
         );
         init.accept(channel);
         channels.put(id, channel);

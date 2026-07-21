@@ -12,7 +12,7 @@ public interface Packet extends ChannelMessage {
     void write(ByteBuf buf, int protocolVersion);
 
     default ResponseFuture<Boolean> withAck(Pipeline pipeline, Connection connection){
-        return withAck(pipeline, connection);
+        return withAck(pipeline, connection, 15_000);
     }
     default ResponseFuture<Boolean> withAck(Pipeline pipeline, Connection connection, long timeout){
         ResponseFuture<Boolean> future = new ResponseFuture<>();

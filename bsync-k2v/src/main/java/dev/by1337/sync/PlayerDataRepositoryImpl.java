@@ -1,5 +1,7 @@
 package dev.by1337.sync;
 
+import dev.by1337.sync.storage.FilePlayerDataStorage;
+import dev.by1337.sync.storage.PlayerDataStorage;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -19,22 +21,27 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class FilePlayerDataRepository<T> implements Listener, PlayerDataRepository<T> {
-    private static final Logger log = LoggerFactory.getLogger(FilePlayerDataRepository.class);
+public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataRepository<T> {
+    private static final Logger log = LoggerFactory.getLogger(PlayerDataRepositoryImpl.class);
     private final Plugin plugin;
     private final Map<UUID, Wrapped<T>> users;
-    private final FilePlayerDataStorage storage;
+    private final PlayerDataStorage storage;
     private final DataManager<T> dataManager;
     private final AtomicBoolean closing = new AtomicBoolean();
 
-    public FilePlayerDataRepository(File dataFolder, Plugin plugin, DataManager<T> dataManager) {
+    public PlayerDataRepositoryImpl(PlayerDataStorage storage, Plugin plugin, DataManager<T> dataManager) {
+        this.storage = storage;
         this.plugin = plugin;
         this.dataManager = dataManager;
         users = new ConcurrentHashMap<>();
-        storage = new FilePlayerDataStorage(dataFolder);
+        storage.setMailAccept(this::onMail);
+        storage.setLockValidator(users::containsKey);
+
         if (plugin != null) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             if (hasClass("io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent")) {
@@ -55,7 +62,6 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
                         plugin
                 );
             }
-
             for (Player player : Bukkit.getOnlinePlayers()) {
                 var v = loadDataAndLock(player.getUniqueId());
                 if (v == null) {
@@ -67,6 +73,18 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
                 }
             }
         } // else in test?
+    }
+    private void onMail(UUID key, String mail){
+        T user = Wrapped.unwrap(users.get(key));
+        if (user == null){
+            log.error("Mail for unloaded player {} {}", key, mail);
+            return;
+        }
+        try {
+            dataManager.acceptMail(user, mail, key);
+        } catch (Exception e) {
+            log.error("Failed to accept mail {}", mail, e);
+        }
     }
 
     @Override
@@ -87,6 +105,7 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
             }
             users.remove(key);
         }
+        storage.close();
     }
 
     @Override
@@ -104,7 +123,7 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
                 log.error("Failed to accept mail! {}", mail, e);
             }
         } else {
-            storage.appendMail(key, mail);
+            storage.pushMail(key, mail);
         }
     }
 
@@ -128,13 +147,16 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
         if (userData != null) {
             write(key, userData);
         }
-        if (v != null) users.remove(key, v);
+        if (v != null) {
+            users.remove(key, v);
+            storage.unlock(key);
+        }
     }
 
     private void write(UUID key, T data) {
         try {
             byte[] snapshot = dataManager.write(data, key);
-            storage.write(key, snapshot);
+            storage.pushSnapshot(key, snapshot);
         } catch (Exception e) {
             log.error("Failed to write player data {}", key, e);
         }
@@ -152,7 +174,6 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
         }
     }
 
-
     @EventHandler(priority = EventPriority.MONITOR)
     public void onLoginMonitor(AsyncPlayerPreLoginEvent event) {
         if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
@@ -167,6 +188,7 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
                 write(key, old.val);
             }
             users.remove(key, old);
+            storage.unlock(key);
         }
     }
 
@@ -200,22 +222,36 @@ public class FilePlayerDataRepository<T> implements Listener, PlayerDataReposito
         if (users.putIfAbsent(key, new Wrapped<>(null)) != null) {
             return null;
         }
-        byte[] payload = storage.read(key);
-        try {
-            T userData = dataManager.read(payload, key);
-            users.put(key, new Wrapped<>(userData));
-            var mails = storage.readAllMailsAndDelete(key);
-            for (String mail : mails) {
-                try {
-                    dataManager.acceptMail(userData, mail, key);
-                } catch (Exception e) {
-                    log.error("Failed to accept mail {}", mail, e);
-                }
+        CompletableFuture<T> future = new CompletableFuture<>();
+        final int version = storage.lockAndLoadData(key, (b, payload) -> {
+            if (b == false){
+                future.complete(null);
+                return;
             }
-            return userData;
+            try {
+                T userData = dataManager.read(payload, key);
+                users.put(key, new Wrapped<>(userData));
+                storage.doMailsLoad(key);
+                future.complete(userData);
+                return;
+            } catch (Exception e) {
+                log.error("Failed to deserialize player data", e);
+                users.remove(key);
+                storage.unlock(key);
+                return;
+            }
+        });
+        try {
+            T t = future.get(30, TimeUnit.SECONDS);
+            if (t == null) {
+                log.error("Failed to load player data! timeout");
+                storage.unlock(key, version);
+                return null;
+            }
+            return t;
         } catch (Exception e) {
-            log.error("Failed to deserialize player data", e);
-            users.remove(key);
+            log.error("Failed to load player data!", e);
+            storage.unlock(key, version);
             return null;
         }
     }

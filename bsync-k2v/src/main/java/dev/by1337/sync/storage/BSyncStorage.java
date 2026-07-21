@@ -1,7 +1,5 @@
-/*
-package dev.by1337.sync;
+package dev.by1337.sync.storage;
 
-import dev.by1337.sync.bukkit.BSync;
 import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.channel.handler.lock.LockManager;
 import dev.by1337.sync.client.channel.handler.lock.Locks;
@@ -10,23 +8,32 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 
-public class BSyncDriver implements LockDriver{
-    private final String group;
-    private final String serviceId;
-    private final Locks locks;
+public class BSyncStorage implements PlayerDataStorage {
+    private BiConsumer<UUID, String> mails;
+    private Locks locks;
+    private ChannelMaker.ChannelData<Locks> channel;
+    private O2BTester<UUID> tester;
 
-    public BSyncDriver(String group, String serviceId) {
-        this.group = group;
-        this.serviceId = serviceId;
-        locks =  ChannelMaker.createGroupLocks(BSync.getGroup(group), serviceId, new LockManager() {
+    public void setLocks(ChannelMaker.ChannelData<Locks> channel) {
+        this.locks = channel.get();
+        this.channel = channel;
+    }
+
+    @Override
+    public void close() {
+        channel.close();
+    }
+
+    public LockManager asBSyncLockManager() {
+        return new LockManager() {
             @Override
             public boolean ensureLockOwnership(UUID key) {
-                return false;
+                return tester.test(key);
             }
 
             @Override
             public void acceptMail(UUID key, String json) {
-
+                mails.accept(key, json);
             }
 
             @Override
@@ -38,7 +45,22 @@ public class BSyncDriver implements LockDriver{
             public void close() {
 
             }
-        });
+        };
+    }
+
+    @Override
+    public void setLockValidator(O2BTester<UUID> tester) {
+        this.tester = tester;
+    }
+
+    @Override
+    @Deprecated
+    public void doMailsLoad(UUID key) {
+    }
+
+    @Override
+    public void setMailAccept(BiConsumer<UUID, String> accept) {
+        mails = accept;
     }
 
     @Override
@@ -63,7 +85,6 @@ public class BSyncDriver implements LockDriver{
 
     @Override
     public int lockAndLoadData(UUID key, BiConsumer<Boolean, byte @Nullable []> callback) {
-        return locks.lockAndLoadData(key, (s, a) -> callback.accept(s == Locks.LockStatus.SUCCESS, a));
+        return locks.lockAndLoadData(key, (s, p) -> callback.accept(s == Locks.LockStatus.SUCCESS, p));
     }
 }
-*/

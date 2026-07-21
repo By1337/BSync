@@ -14,6 +14,7 @@ import dev.by1337.sync.common.work.EventLoopWorker;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import javax.print.DocFlavor;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,6 +30,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     private Connection remote;
     private Pipeline pipeline;
     private boolean closing;
+    private boolean ready;
 
     private BSUtils.FaultIsolation<LockManager> lockManager;
 
@@ -47,6 +49,12 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
         this.log = runtime.logger();
         pipeline = runtime.pipeline();
         eventLoop.schedule(this::tick, 3_000);
+        ready = true;
+    }
+
+    @Override
+    public boolean isReady() {
+        return ready;
     }
 
     private void tick() {
@@ -70,6 +78,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     @Override
     public boolean isLocked(UUID uuid) {
+        if (!ready) return false;
         var v = locks.get(uuid);
         return v != null && !v.isPending();
     }
@@ -143,6 +152,10 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     @Override
     public void pushMail(UUID key, String json) {
+        if (!ready) {
+            log.error("Failed to push mail channel is not ready! {} {}", key, json);
+            return;
+        }
         eventLoop.execute(() -> {
             if (!isLocked(key)) {
                 //todo дедубликация и ретраи?
@@ -154,6 +167,10 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     }
 
     public void pushSnapshot(UUID key, byte[] snapshot) {
+        if (!ready) {
+            log.error("Failed to push mail channel is not ready! {} {}", key, arrayToBase64(snapshot));
+            return;
+        }
         if (snapshot.length >= MAX_BLOB_SIZE) {
             throw new IllegalArgumentException("Snapshot is too big!");
         }
@@ -201,6 +218,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     @Override
     public void unlock(UUID key, int version) {
+        if (!ready) return;
         eventLoop.execute(() -> {
             var lock = locks.get(key);
             if (lock == null) {
@@ -239,6 +257,10 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     }
 
     private int lockAndLoadData(UUID key, BSUtils.FaultIsolation<BiConsumer<LockStatus, byte @Nullable []>> callback) {
+        if (!ready){
+            callback.run(v -> v.accept(LockStatus.FAILURE, null));
+            return 0;
+        }
         var lock = new LockData(counter.getAndIncrement(), key);
         // Вне eventLoop только здесь вызываю ConcurrentHashMap#put.
         // Скажем что вне eventLoop можно put только если изначально там null.

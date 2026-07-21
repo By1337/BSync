@@ -9,7 +9,7 @@ import java.lang.annotation.Target;
 
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Addon {
+public @interface BSyncAddon {
     @NotNull String name();
 
     @NotNull String author() default "no author";

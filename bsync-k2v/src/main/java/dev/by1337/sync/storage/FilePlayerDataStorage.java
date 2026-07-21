@@ -1,5 +1,6 @@
-package dev.by1337.sync;
+package dev.by1337.sync.storage;
 
+import it.unimi.dsi.fastutil.objects.Object2BooleanFunction;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,11 +14,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
-public class FilePlayerDataStorage {
+public class FilePlayerDataStorage implements PlayerDataStorage {
     private static final Logger log = LoggerFactory.getLogger(FilePlayerDataStorage.class);
     private final Object[] locks;
     private final Path dataFolder;
+    private BiConsumer<UUID, String> mailAccept;
 
     public FilePlayerDataStorage(File dataFolder) {
         dataFolder.mkdirs();
@@ -94,5 +97,53 @@ public class FilePlayerDataStorage {
 
     static long hash(UUID uuid) {
         return uuid.getMostSignificantBits() ^ uuid.getLeastSignificantBits();
+    }
+
+    @Override
+    @Deprecated
+    public void setLockValidator(O2BTester<UUID> tester) {
+    }
+
+    @Override
+    public void doMailsLoad(UUID key) {
+        for (String s : readAllMailsAndDelete(key)) {
+            appendMail(key, s);
+        }
+    }
+
+    @Override
+    public void setMailAccept(BiConsumer<UUID, String> accept) {
+        mailAccept = accept;
+    }
+
+    @Override
+    @Deprecated
+    public boolean isLocked(UUID uuid) {
+        return true;
+    }
+
+    @Override
+    public void pushMail(UUID key, String json) {
+        appendMail(key, json);
+    }
+
+    @Override
+    public void pushSnapshot(UUID key, byte[] snapshot) {
+        write(key, snapshot);
+    }
+
+    @Override
+    @Deprecated
+    public void unlock(UUID key, int version) {
+    }
+
+    @Override
+    public int lockAndLoadData(UUID key, BiConsumer<Boolean, byte @Nullable []> callback) {
+        callback.accept(true, read(key));
+        return 1;
+    }
+
+    @Override
+    public void close() {
     }
 }

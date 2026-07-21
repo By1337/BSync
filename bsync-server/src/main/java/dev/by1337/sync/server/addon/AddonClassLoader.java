@@ -50,8 +50,8 @@ public class AddonClassLoader extends URLClassLoader {
             String cl = e.getName().replace(".class", "").replace("/", ".");
             try {
                 Class<?> clazz = Class.forName(cl, false, this);
-                if (clazz.isAnnotationPresent(Addon.class)) {
-                    Addon a = clazz.getAnnotation(Addon.class);
+                if (clazz.isAnnotationPresent(BSyncAddon.class)) {
+                    BSyncAddon a = clazz.getAnnotation(BSyncAddon.class);
                     description = new AddonDescription(a.name(), cl, version, a.author());
                     break;
                 }
@@ -89,7 +89,7 @@ public class AddonClassLoader extends URLClassLoader {
     }
 
     void initialize(AbstractAddon addon) {
-        addon.init(LoggerFactory.getLogger("BCases#" + description.name()), description, this, file, server);
+        addon.init(LoggerFactory.getLogger(description.name()), description, this, file, server);
     }
 
     @Override

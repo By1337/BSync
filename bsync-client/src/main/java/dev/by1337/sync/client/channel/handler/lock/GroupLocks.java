@@ -41,4 +41,18 @@ public class GroupLocks implements Locks {
     public int lockAndLoadData(UUID key, BiConsumer<LockStatus, byte @Nullable []> callback) {
         return group.route(key).lockAndLoadData(key, callback);
     }
+
+    @Override
+    public boolean isReady() {
+        for (ChannelMaker.ChannelData<Locks> channel : group.channels()) {
+            if (channel.get().isReady()) return true;
+        }
+        return false;
+    }
+
+    public void close() {
+        for (ChannelMaker.ChannelData<Locks> channel : group.channels()) {
+            channel.close();
+        }
+    }
 }

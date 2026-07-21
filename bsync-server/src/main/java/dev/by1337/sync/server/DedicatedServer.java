@@ -79,11 +79,7 @@ public class DedicatedServer {
 
         workers.forEach(worker -> Metrics.METRICS.create(worker.name(), d -> {
             var precent = (d / 1_000_000_000.0) * 100D;
-            var v = String.format("%.3f", precent) + '%';
-            if (precent >= 10D) {
-                Metrics.METRICS.dump(log);
-            }
-            return v;
+            return String.format("%.3f", precent) + '%';
         }, worker::busyNanosThenReset));
         Metrics.METRICS.create("in-bound-pps", MetricFormatter.number(), channelManager::receivedPacketsSumThenReset);
         // spark profiler start --thread server-worker.* --regex
