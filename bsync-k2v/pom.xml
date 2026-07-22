@@ -4,7 +4,7 @@
     <parent>
         <groupId>dev.by1337.sync</groupId>
         <artifactId>BSync</artifactId>
-        <version>1.0</version>
+        <version>1.1</version>
     </parent>
     <artifactId>bsync-k2v</artifactId>
 
@@ -103,13 +103,13 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-client</artifactId>
-            <version>1.0</version>
+            <version>1.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-bukkit</artifactId>
-            <version>1.0</version>
+            <version>1.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

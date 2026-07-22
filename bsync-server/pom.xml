@@ -4,7 +4,7 @@
     <parent>
         <groupId>dev.by1337.sync</groupId>
         <artifactId>BSync</artifactId>
-        <version>1.0</version>
+        <version>1.1</version>
     </parent>
     <artifactId>bsync-server</artifactId>
     <properties>
@@ -101,7 +101,7 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-db</artifactId>
-            <version>1.0</version>
+            <version>1.1</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -221,7 +221,7 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-common</artifactId>
-            <version>1.0</version>
+            <version>1.1</version>
         </dependency>
 
         <dependency>
@@ -233,7 +233,7 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-client</artifactId>
-            <version>1.0</version>
+            <version>1.1</version>
             <scope>test</scope>
         </dependency>
         <dependency>

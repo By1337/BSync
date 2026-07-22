@@ -6,6 +6,7 @@ import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
+import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.handler.lock.ServerLockHandler;
@@ -18,10 +19,12 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class ChannelManager {
     private static final Logger log = LoggerFactory.getLogger(ChannelManager.class);
@@ -29,6 +32,7 @@ public class ChannelManager {
     private final Map<String, ServerChannel> channels = new ConcurrentHashMap<>();
     private final DedicatedServer server;
     private final LongAdder receivedPackets = new LongAdder();
+    private final Map<String, Function<ChannelManager, ServerChannel>> customChannels = new ConcurrentHashMap<>();
 
     public ChannelManager(EventLoopWorkers workers, DedicatedServer server) {
         this.workers = workers;
@@ -36,12 +40,16 @@ public class ChannelManager {
     }
 
     public ServerChannel addChannel(String id, Consumer<ServerChannel> init) {
+        return addChannel(id, init, workers.getNext());
+    }
+
+    public ServerChannel addChannel(String id, Consumer<ServerChannel> init, EventLoopWorker worker) {
         if (channels.containsKey(id)) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
         ServerChannel serverChannel = new ServerChannel(
                 id,
-                workers.getNext(),
+                worker,
                 server
         );
         init.accept(serverChannel);
@@ -86,11 +94,28 @@ public class ChannelManager {
                     connection.write(new S2CChannelStatsPacket(id, true));
                     channel.handle(new ClientConnectMessage(connection), connection);
                 } else {
-                    log.error("Trying to open unsupported channel type! {} {} {}", id, connection, channelType);
-                    connection.write(new S2CChannelStatsPacket(id, false));
+                    var maker = customChannels.get(channelType);
+                    if (maker == null) {
+                        log.error("Trying to open unsupported channel type! {} {} {}", id, connection, channelType);
+                        connection.write(new S2CChannelStatsPacket(id, false));
+                    } else {
+                        try {
+                            var ch = maker.apply(this);
+                            Objects.requireNonNull(ch);
+                            connection.write(new S2CChannelStatsPacket(id, true));
+                            ch.handle(new ClientConnectMessage(connection), connection);
+                        } catch (Exception e) {
+                            log.error("Failed to create custom channel {} {}", id, channelType, e);
+                            connection.write(new S2CChannelStatsPacket(id, false));
+                        }
+                    }
                 }
             }
         }
+    }
+
+    public void registerCustomChannelType(String s, Function<ChannelManager, ServerChannel> maker) {
+        customChannels.put(s, maker);
     }
 
     public void onDisconnect(Connection connection) {
