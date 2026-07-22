@@ -11,7 +11,7 @@ import java.util.UUID;
 
 public class CachedMailbox {
     private final MailboxRepository mailbox;
-    private final Cache<UUID, List<MailboxRepository.Message>> cache;
+    private final Cache<UUID, List<MailboxRepository.Mail>> cache;
 
     public CachedMailbox(MailboxRepository mailbox) {
         this.mailbox = mailbox;
@@ -20,7 +20,7 @@ public class CachedMailbox {
                 .expireAfterAccess(Duration.ofMinutes(5))
                 .build();
     }
-    public List<MailboxRepository.Message> getAll(UUID owner, long afterId) throws SQLException {
+    public List<MailboxRepository.Mail> getAll(UUID owner, long afterId) throws SQLException {
         //return cache.get(owner)
         return null;
     }

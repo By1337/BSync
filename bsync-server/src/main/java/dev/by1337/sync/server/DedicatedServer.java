@@ -28,6 +28,7 @@ import java.net.URLConnection;
 import java.util.Objects;
 
 public class DedicatedServer {
+    public static final EventLoopWorkers IO_WORKERS = new EventLoopWorkers("io-%d", 1);
     private static final Logger log = LoggerFactory.getLogger(DedicatedServer.class);
     private final Config config;
     private final ConnectionListener connectionListener;
@@ -78,6 +79,10 @@ public class DedicatedServer {
         startMillis = System.currentTimeMillis();
 
         workers.forEach(worker -> Metrics.METRICS.create(worker.name(), d -> {
+            var precent = (d / 1_000_000_000.0) * 100D;
+            return String.format("%.3f", precent) + '%';
+        }, worker::busyNanosThenReset));
+        IO_WORKERS.forEach(worker -> Metrics.METRICS.create(worker.name(), d -> {
             var precent = (d / 1_000_000_000.0) * 100D;
             return String.format("%.3f", precent) + '%';
         }, worker::busyNanosThenReset));

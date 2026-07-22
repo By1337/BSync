@@ -1,13 +1,13 @@
 package dev.by1337.sync.server.database.table;
 
 import com.zaxxer.hikari.HikariDataSource;
-import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class MailboxRepository {
 
@@ -27,19 +27,12 @@ public final class MailboxRepository {
     public void createTable() throws SQLException {
         String sql = """
                 CREATE TABLE IF NOT EXISTS %s (
-                    id BIGINT NOT NULL AUTO_INCREMENT,
+                    uuid BINARY(16) NOT NULL,
+                    id INT UNSIGNED NOT NULL,
+                    mail TEXT NOT NULL,
                 
-                    owner BINARY(16) NOT NULL,
-                
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                
-                    payload MEDIUMBLOB NOT NULL,
-                
-                    PRIMARY KEY (id),
-                
-                    INDEX idx_owner_id (owner, id)
-                ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC;
-                """.formatted(table);
+                    PRIMARY KEY (uuid, id)
+                );""".formatted(table);
 
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -48,119 +41,133 @@ public final class MailboxRepository {
         }
     }
 
-    public long insert(@NotNull UUID owner, byte @NotNull [] payload) throws SQLException {
-        String sql = """
-                    INSERT INTO `%s` (`owner`, `payload`)
-                    VALUES (?, ?)
-                """.formatted(table);
+    public int getMaxId() throws SQLException {
+        String sql = "SELECT MAX(id) FROM %s;".formatted(table);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
 
-            ps.setBytes(1, uuidToBytes(owner));
-            ps.setBytes(2, payload);
-
-            ps.executeUpdate();
-
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (!rs.next()) {
-                    throw new SQLException("No generated key returned");
-                }
-                return rs.getLong(1);
+            if (rs.next()) {
+                return rs.getInt(1);
             }
+            return 0;
         }
     }
 
-    public Optional<Message> getById(long id) throws SQLException {
+    public List<Mail> loadAll(UUID owner) throws SQLException {
         String sql = """
-                    SELECT id, owner, payload
-                    FROM `%s`
-                    WHERE id = ?
-                """.formatted(table);
+            SELECT id, mail
+            FROM %s
+            WHERE uuid = ?
+            ORDER BY id
+            """.formatted(table);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            ps.setLong(1, id);
+            statement.setBytes(1, uuidToBytes(owner));
 
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return Optional.empty();
+            try (ResultSet result = statement.executeQuery()) {
+                List<Mail> mails = new ArrayList<>();
 
-                return Optional.of(new Message(
-                        rs.getLong("id"),
-                        bytesToUuid(rs.getBytes("owner")),
-                        rs.getBytes("payload")
-                ));
-            }
-        }
-    }
-
-    public List<Message> getAll(UUID owner, long afterId, int limit) throws SQLException {
-        String sql = """
-                    SELECT id, owner, payload
-                    FROM `%s`
-                    WHERE owner = ?
-                      AND id > ?
-                    ORDER BY id ASC
-                    LIMIT ?
-                """.formatted(table);
-
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setBytes(1, uuidToBytes(owner));
-            ps.setLong(2, afterId);
-            ps.setInt(3, limit);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                List<Message> list = new ArrayList<>();
-
-                while (rs.next()) {
-                    list.add(new Message(
-                            rs.getLong("id"),
+                while (result.next()) {
+                    mails.add(new Mail(
+                            result.getInt("id"),
                             owner,
-                            rs.getBytes("payload")
+                            result.getString("mail")
                     ));
                 }
 
-                return list;
+                return mails;
             }
         }
     }
 
-    public boolean delete(long id) throws SQLException {
+    public void put(int id, UUID owner, String payload) throws SQLException {
+        put(new Mail(id, owner, payload));
+    }
+
+    public void put(Mail mail) throws SQLException {
         String sql = """
-                    DELETE FROM `%s`
-                    WHERE id = ?
+                INSERT INTO `%s` (uuid, id, mail)
+                VALUES (?, ?, ?)
                 """.formatted(table);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            ps.setLong(1, id);
+            statement.setBytes(1, uuidToBytes(mail.owner));
+            statement.setInt(2, mail.id);
+            statement.setString(3, mail.payload);
 
-            return ps.executeUpdate() > 0;
+            statement.executeUpdate();
         }
     }
 
-    public boolean delete(UUID owner, long id) throws SQLException {
+    public void putAll(Queue<Mail> queue, int limit, Consumer<Mail> c) throws SQLException {
+        if (queue.isEmpty()) return;
         String sql = """
-                    DELETE FROM `%s`
-                    WHERE owner = ?
-                      AND id = ?
+                INSERT INTO `%s` (uuid, id, mail)
+                VALUES (?, ?, ?)
                 """.formatted(table);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            ps.setBytes(1, uuidToBytes(owner));
-            ps.setLong(2, id);
-
-            return ps.executeUpdate() > 0;
+            connection.setAutoCommit(false);
+            Mail mail;
+            while (limit-- > 0 && (mail = queue.poll()) != null) {
+                statement.setBytes(1, uuidToBytes(mail.owner));
+                statement.setInt(2, mail.id);
+                statement.setString(3, mail.payload);
+                c.accept(mail);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+            connection.commit();
         }
     }
 
-    public record Message(long id, UUID owner, byte[] payload) {}
+    public void remove(Mail mail) throws SQLException {
+        String sql = """
+                DELETE FROM %s
+                WHERE uuid = ? AND id = ?;""".formatted(table);
+
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setBytes(1, uuidToBytes(mail.owner));
+            statement.setInt(2, mail.id);
+
+            statement.executeUpdate();
+        }
+    }
+    public void removeAll(Queue<Mail> queue, int limit, Consumer<Mail> c) throws SQLException {
+        String sql = """
+                DELETE FROM %s
+                WHERE uuid = ? AND id = ?;""".formatted(table);
+
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            connection.setAutoCommit(false);
+            Mail mail;
+            while (limit-- > 0 && (mail = queue.poll()) != null) {
+                statement.setBytes(1, uuidToBytes(mail.owner));
+                statement.setInt(2, mail.id);
+                c.accept(mail);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+            connection.commit();
+        }
+    }
+
+
+    public record Mail(int id, UUID owner, String payload) {}
 
     private static byte[] uuidToBytes(UUID uuid) {
         byte[] bytes = new byte[16];

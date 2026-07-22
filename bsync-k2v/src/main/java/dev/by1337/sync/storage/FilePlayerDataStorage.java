@@ -107,7 +107,7 @@ public class FilePlayerDataStorage implements PlayerDataStorage {
     @Override
     public void doMailsLoad(UUID key) {
         for (String s : readAllMailsAndDelete(key)) {
-            appendMail(key, s);
+            mailAccept.accept(key, s);
         }
     }
 

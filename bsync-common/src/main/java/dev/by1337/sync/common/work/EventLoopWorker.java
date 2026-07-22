@@ -23,6 +23,9 @@ public final class EventLoopWorker {
     public EventLoopWorker(String name) {
         this.name = name;
         this.thread = new Thread(this::runLoop, name);
+        thread.setUncaughtExceptionHandler((th, e) -> {
+            log.error("uncaught exception in worker {}", th.getName(), e);
+        });
         this.thread.start();
     }
 

@@ -1,5 +1,7 @@
 package dev.by1337.sync.server.channel.handler.lock;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.request.IncomingRequest;
 import dev.by1337.sync.common.channel.pipeline.*;
@@ -7,21 +9,26 @@ import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CLockStatusAndBlobPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
+import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.ServerChannelRuntime;
 import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
-import dev.by1337.sync.bd.table.K2VCache;
+import dev.by1337.sync.server.database.table.BatchedK2VCache;
+import dev.by1337.sync.server.database.table.BatchedMailbox;
+import dev.by1337.sync.server.database.table.MailboxRepository;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.sql.SQLException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ServerLockHandler implements ChannelHandler {
 
-    private int mailIds = 0;
-    private final Map<UUID, LinkedHashMap<Integer, String>> mails = new HashMap<>();
+
     private final LockMap lockMap = new LockMap();
 
     private Logger log = DEFAULT_LOGGER;
@@ -29,8 +36,9 @@ public class ServerLockHandler implements ChannelHandler {
     private Pipeline pipeline;
     private ServerChannelRuntime serverChannel;
     private boolean closing = false;
-    private K2VCache<UUID, byte[]> blobRepository;
+    private BatchedK2VCache<UUID, byte[]> blobRepository;
     private DedicatedServer server;
+    private MailBox mailBox;
 
     @Override
     public void init(ChannelRuntime r) {
@@ -45,8 +53,20 @@ public class ServerLockHandler implements ChannelHandler {
         serverChannel = runtime;
         eventLoop.schedule(this::tick, 10_000);
         server = runtime.server();
-        blobRepository = new K2VCache<>(
-                new dev.by1337.sync.bd.repo.UUID2MediumBLOBRepository(server.database().dataSource(), runtime.channel().id() + "_blob_repository")
+        mailBox = new MailBox(new BatchedMailbox(
+                new MailboxRepository(
+                        server.database().dataSource(),
+                        runtime.channel().id() + "_mailbox_repository"
+                ),
+                DedicatedServer.IO_WORKERS.getNext()
+        ));
+
+        blobRepository = new BatchedK2VCache<>(
+                new dev.by1337.sync.bd.repo.UUID2MediumBLOBRepository(server.database().dataSource(), runtime.channel().id() + "_blob_repository"),
+                DedicatedServer.IO_WORKERS.getNext(),
+                b -> b
+                        .maximumWeight(1024 * 1024 * 1024)
+                        .weigher((k, v) -> v.length + 16)
         );
     }
 
@@ -148,14 +168,12 @@ public class ServerLockHandler implements ChannelHandler {
             }
             case C2SPollAllMailsPacket(UUID key, int token) -> {
                 if (lockMap.isOwner(key, ctx.connection().transport(), token)) {
-                    var mails = this.mails.get(key);
-                    if (mails == null || mails.isEmpty()) return;
                     sendMail(ctx.connection(), key);
                 }
             }
             case C2SPushMailPacket(UUID key, String json) -> {
-                int id = mailIds++;
-                this.mails.computeIfAbsent(key, k -> new LinkedHashMap<>()).put(id, json);
+                MailboxRepository.Mail mail = new MailboxRepository.Mail(mailBox.nextMailId(), key, json);
+                mailBox.addMail(mail);
                 var lock = lockMap.getLock(key);
                 if (lock != null) {
                     sendMail(serverChannel.lookup(lock.owner), key);
@@ -181,10 +199,9 @@ public class ServerLockHandler implements ChannelHandler {
     private void sendMail(Connection connection, UUID key) {
         var lock = lockMap.getLock(key);
         if (lock == null || lock.owner != connection.transport()) return;
-        var map = this.mails.get(key);
-        if (map == null || map.isEmpty()) return;
-        var mail = map.firstEntry();
-        new S2CMailAcceptPacket(key, mail.getValue(), lock.token).request(pipeline, connection)
+        var mail = mailBox.peekNextMail(key);
+        if (mail == null) return;
+        new S2CMailAcceptPacket(key, mail.payload(), lock.token).request(pipeline, connection)
                 .then((result) -> {
                     if (result instanceof C2SMailResponsePacket response) {
                         if (!lockMap.isOwner(key, connection.transport(), response.token())) {
@@ -192,17 +209,8 @@ public class ServerLockHandler implements ChannelHandler {
                             return;
                         }
                         if (response.isAccepted()) {
-                            var mails = this.mails.get(key);
-                            if (mails == null || mails.remove(mail.getKey()) == null) {
-                                log.error("Клиент {} принял не существующий mail {}", connection, mail);
-                            }
-                            if (mails != null) {
-                                if (!mails.isEmpty()) {
-                                    sendMail(connection, key);
-                                } else {
-                                    this.mails.remove(key);
-                                }
-                            }
+                            mailBox.removeMail(mail);
+                            sendMail(connection, key);
                         }
                     } else {
                         log.error("Client {} не ответил на S2CMailAcceptPacket {}", connection, result);
@@ -213,6 +221,8 @@ public class ServerLockHandler implements ChannelHandler {
     @Override
     public void close() {
         closing = true;
+        BSUtils.safe(() -> blobRepository.close());
+        BSUtils.safe(() -> mailBox.close());
     }
 
     public static class LockData {
@@ -319,5 +329,65 @@ public class ServerLockHandler implements ChannelHandler {
 
     private String arrayToBase64(byte[] arr) {
         return arr == null ? "null" : Base64.getEncoder().encodeToString(arr);
+    }
+
+    private static class MailBox {
+        private static final Logger log = LoggerFactory.getLogger(MailBox.class);
+        private int mailIds = 0;
+        private final BatchedMailbox mailbox;
+        private final Cache<UUID, Queue<MailboxRepository.Mail>> loaded_mails;
+
+        private MailBox(BatchedMailbox mailbox) {
+            this.mailbox = mailbox;
+            try {
+                mailIds = mailbox.getMaxId();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            loaded_mails = Caffeine.newBuilder()
+                    .maximumSize(2048)
+                    .expireAfterAccess(Duration.ofMinutes(30))
+                    .build()
+            ;
+        }
+
+        public int nextMailId() {
+            return mailIds++;
+        }
+
+        public MailboxRepository.Mail peekNextMail(UUID uuid) {
+            return getMailQueue(uuid).peek();
+        }
+
+        public Queue<MailboxRepository.Mail> getMailQueue(UUID uuid) {
+            return loaded_mails.get(uuid, k -> {
+                try {
+                    var list = mailbox.loadAll(uuid);
+                    PriorityQueue<MailboxRepository.Mail> queue = new PriorityQueue<>(Comparator.comparingInt(MailboxRepository.Mail::id));
+                    queue.addAll(list);
+                    return queue;
+                } catch (SQLException e) {
+                    log.error("Failed to load mails for {}", uuid);
+                    return new PriorityQueue<>();
+                }
+            });
+        }
+
+        public void removeMail(MailboxRepository.Mail mail) {
+            mailbox.removeMail(mail);
+            var v = loaded_mails.getIfPresent(mail.owner());
+            if (v != null) {
+                v.remove(mail);
+            }
+        }
+
+        public void addMail(MailboxRepository.Mail mail) {
+            getMailQueue(mail.owner()).offer(mail);
+            mailbox.addMail(mail);
+        }
+
+        public void close() {
+            BSUtils.safe(mailbox::close);
+        }
     }
 }
