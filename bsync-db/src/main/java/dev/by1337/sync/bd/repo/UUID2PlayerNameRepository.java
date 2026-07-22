@@ -6,17 +6,16 @@ import dev.by1337.sync.bd.table.K2VTable;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
-import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
+public final class UUID2PlayerNameRepository implements K2VTable<UUID, String> {
     private final HikariDataSource dataSource;
     private final String tableName;
 
-    public UUID2VarChar16Repository(HikariDataSource dataSource, String tableName) {
+    public UUID2PlayerNameRepository(HikariDataSource dataSource, String tableName) {
         this.dataSource = dataSource;
         this.tableName = tableName;
         try {
@@ -33,11 +32,13 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
                     `updated_at` TIMESTAMP NOT NULL
                         DEFAULT CURRENT_TIMESTAMP
                         ON UPDATE CURRENT_TIMESTAMP,
-                    `data` VARCHAR(16) NOT NULL,
+                    `data` VARCHAR(16)
+                        CHARACTER SET utf8mb4
+                        COLLATE utf8mb4_0900_as_ci
+                        NOT NULL,
                 
                     PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC
-                """.formatted(tableName);
+                ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC""".formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -45,6 +46,30 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
             statement.execute(sql);
         }
     }
+
+    public Optional<K2VPair<UUID, String>> findByName(String name) throws SQLException {
+        String sql = """
+                SELECT `id`, `data`
+                FROM `%s`
+                WHERE `data` = ?
+                """.formatted(tableName);
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setString(1, name);
+
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                UUID uuid = UUIDUtil.bytesToUuid(resultSet.getBytes(1));
+                String n = resultSet.getString(2);
+                return Optional.of(new K2VPair<>(uuid, n));
+            }
+        }
+    }
+
     public void putAll(Queue<K2VPair<UUID, String>> queue, int limit, Consumer<K2VPair<UUID, String>> c) throws SQLException {
         if (queue.isEmpty()) return;
         String sql = """
@@ -60,7 +85,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
             connection.setAutoCommit(false);
 
             K2VPair<UUID, String> p;
-            while (limit-- > 0 && (p = queue.poll()) != null){
+            while (limit-- > 0 && (p = queue.poll()) != null) {
                 statement.setBytes(1, UUIDUtil.uuidToBytes(p.key));
                 statement.setString(2, p.value);
                 c.accept(p);
@@ -136,7 +161,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
     }
 
     @Override
-    public void removeAll(Queue<UUID> queue, int limit, Consumer<UUID> c) throws SQLException{
+    public void removeAll(Queue<UUID> queue, int limit, Consumer<UUID> c) throws SQLException {
         String sql = """
                 DELETE FROM `%s`
                 WHERE `id` = ?
@@ -148,7 +173,7 @@ public final class UUID2VarChar16Repository implements K2VTable<UUID, String> {
             connection.setAutoCommit(false);
 
             UUID p;
-            while (limit-- > 0 && (p = queue.poll()) != null){
+            while (limit-- > 0 && (p = queue.poll()) != null) {
                 statement.setBytes(1, UUIDUtil.uuidToBytes(p));
                 c.accept(p);
                 statement.addBatch();
