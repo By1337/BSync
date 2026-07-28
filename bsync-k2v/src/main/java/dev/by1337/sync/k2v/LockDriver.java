@@ -1,17 +1,11 @@
-package dev.by1337.sync.storage;
+package dev.by1337.sync.k2v;
 
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 import java.util.function.BiConsumer;
 
-public interface PlayerDataStorage {
-    void setLockValidator(O2BTester<UUID> tester);
-
-    void doMailsLoad(UUID key);
-
-    void setMailAccept(BiConsumer<UUID, String> accept);
-
+public interface LockDriver {
     boolean isLocked(UUID uuid);
 
     void pushMail(UUID key, String json);
@@ -26,10 +20,4 @@ public interface PlayerDataStorage {
 
     int lockAndLoadData(UUID key, BiConsumer<Boolean, byte @Nullable []> callback);
 
-    void close();
-
-    @FunctionalInterface
-    public interface O2BTester<T> {
-        boolean test(T v);
-    }
 }

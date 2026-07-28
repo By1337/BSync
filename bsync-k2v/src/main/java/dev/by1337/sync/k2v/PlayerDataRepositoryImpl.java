@@ -1,7 +1,6 @@
-package dev.by1337.sync;
+package dev.by1337.sync.k2v;
 
-import dev.by1337.sync.storage.FilePlayerDataStorage;
-import dev.by1337.sync.storage.PlayerDataStorage;
+import dev.by1337.sync.k2v.storage.PlayerDataStorage;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -17,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,6 +31,7 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
     private final PlayerDataStorage storage;
     private final DataManager<T> dataManager;
     private final AtomicBoolean closing = new AtomicBoolean();
+    private final Listener loginHook;
 
     public PlayerDataRepositoryImpl(PlayerDataStorage storage, Plugin plugin, DataManager<T> dataManager) {
         this.storage = storage;
@@ -44,23 +43,36 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
 
         if (plugin != null) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
-            if (hasClass("io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent")) {
-                plugin.getServer().getPluginManager().registerEvent(
-                        io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent.class,
-                        this,
-                        EventPriority.MONITOR,
-                        (listener, event0) -> {
-                            if (event0 instanceof io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent event) {
-                                if (event.isAllowed()) return;
-                                if (event.getConnection() instanceof io.papermc.paper.connection.PlayerLoginConnection plc) {
-                                    var v = plc.getAuthenticatedProfile();
-                                    if (v != null)
-                                        removeData(v.getId());
-                                }
-                            }
-                        },
+            if (hasClass("com.by1337.leaf.event.player.AsyncPlayerDataLoadEvent")) {
+                loginHook = new AsyncLoadLoginHook();
+                plugin.getServer().getPluginManager().registerEvents(
+                        loginHook,
                         plugin
                 );
+            } else {
+                loginHook = new DefaultLoginHook();
+                plugin.getServer().getPluginManager().registerEvents(
+                        loginHook,
+                        plugin
+                );
+                if (hasClass("io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent")) {
+                    plugin.getServer().getPluginManager().registerEvent(
+                            io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent.class,
+                            this,
+                            EventPriority.MONITOR,
+                            (listener, event0) -> {
+                                if (event0 instanceof io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent event) {
+                                    if (event.isAllowed()) return;
+                                    if (event.getConnection() instanceof io.papermc.paper.connection.PlayerLoginConnection plc) {
+                                        var v = plc.getAuthenticatedProfile();
+                                        if (v != null)
+                                            removeData(v.getId());
+                                    }
+                                }
+                            },
+                            plugin
+                    );
+                }
             }
             for (Player player : Bukkit.getOnlinePlayers()) {
                 var v = loadDataAndLock(player.getUniqueId());
@@ -72,11 +84,15 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
                     }
                 }
             }
-        } // else in test?
+        } else {
+            // else in test?
+            loginHook = null;
+        }
     }
-    private void onMail(UUID key, String mail){
+
+    private void onMail(UUID key, String mail) {
         T user = Wrapped.unwrap(users.get(key));
-        if (user == null){
+        if (user == null) {
             log.error("Mail for unloaded player {} {}", key, mail);
             return;
         }
@@ -92,6 +108,9 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         if (!closing.compareAndSet(false, true)) return;
         if (plugin != null) {
             HandlerList.unregisterAll(this);
+            if (loginHook != null) {
+                HandlerList.unregisterAll(loginHook);
+            }
         } // else in test?
         for (UUID key : List.copyOf(users.keySet())) {
             T user = Wrapped.unwrap(users.get(key));
@@ -174,13 +193,6 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onLoginMonitor(AsyncPlayerPreLoginEvent event) {
-        if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
-            removeData(event.getUniqueId());
-        }
-    }
-
     private void removeData(UUID key) {
         var old = users.get(key);
         if (old != null) {
@@ -189,21 +201,6 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
             }
             users.remove(key, old);
             storage.unlock(key);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onLogin(AsyncPlayerPreLoginEvent event) {
-        if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) return;
-        if (closing.get()) {
-            event.kickMessage(Component.text("Failed to load player data"));
-            event.setLoginResult(AsyncPlayerPreLoginEvent.Result.KICK_OTHER);
-            return;
-        }
-        var data = loadDataAndLock(event.getUniqueId());
-        if (data == null) {
-            event.setLoginResult(AsyncPlayerPreLoginEvent.Result.KICK_OTHER);
-            event.kickMessage(Component.text("Failed to load player data!"));
         }
     }
 
@@ -224,7 +221,7 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         }
         CompletableFuture<T> future = new CompletableFuture<>();
         final int version = storage.lockAndLoadData(key, (b, payload) -> {
-            if (b == false){
+            if (b == false) {
                 future.complete(null);
                 return;
             }
@@ -277,6 +274,45 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private class DefaultLoginHook implements Listener {
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void onLoginMonitor(AsyncPlayerPreLoginEvent event) {
+            if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
+                removeData(event.getUniqueId());
+            }
+        }
+
+        @EventHandler(priority = EventPriority.HIGHEST)
+        public void onLogin(AsyncPlayerPreLoginEvent event) {
+            if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) return;
+            if (closing.get()) {
+                event.kickMessage(Component.text("Failed to load player data"));
+                event.setLoginResult(AsyncPlayerPreLoginEvent.Result.KICK_OTHER);
+                return;
+            }
+            var data = loadDataAndLock(event.getUniqueId());
+            if (data == null) {
+                event.setLoginResult(AsyncPlayerPreLoginEvent.Result.KICK_OTHER);
+                event.kickMessage(Component.text("Failed to load player data!"));
+            }
+        }
+    }
+
+    private class AsyncLoadLoginHook implements Listener {
+        @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
+        public void onLogin(com.by1337.leaf.event.player.AsyncPlayerDataLoadEvent event) {
+            if (event.isCancelled()) return;
+            if (closing.get()) {
+                event.setCancelled(true);
+                return;
+            }
+            var data = loadDataAndLock(event.player());
+            if (data == null) {
+                event.setCancelled(true);
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-package dev.by1337.sync;
+package dev.by1337.sync.k2v;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

@@ -1,6 +1,5 @@
-package dev.by1337.sync.storage;
+package dev.by1337.sync.k2v.storage;
 
-import it.unimi.dsi.fastutil.objects.Object2BooleanFunction;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,10 +1,10 @@
-package dev.by1337.sync;
+package dev.by1337.sync.k2v;
 
 import dev.by1337.sync.bukkit.BSync;
 import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.channel.handler.lock.Locks;
-import dev.by1337.sync.storage.BSyncStorage;
-import dev.by1337.sync.storage.FilePlayerDataStorage;
+import dev.by1337.sync.k2v.storage.BSyncStorage;
+import dev.by1337.sync.k2v.storage.FilePlayerDataStorage;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.Nullable;
 

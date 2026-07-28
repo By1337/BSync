@@ -1,4 +1,4 @@
-package dev.by1337.sync.storage;
+package dev.by1337.sync.k2v.storage;
 
 import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.channel.handler.lock.LockManager;
