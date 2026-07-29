@@ -197,12 +197,17 @@ public class ServerLockHandler implements ChannelHandler {
 
 
     private void sendMail(Connection connection, UUID key) {
+        eventLoop.assertThread();
         var lock = lockMap.getLock(key);
         if (lock == null || lock.owner != connection.transport()) return;
+        if (lock.isMailProcess) return;
         var mail = mailBox.peekNextMail(key);
         if (mail == null) return;
+        lock.isMailProcess = true;
         new S2CMailAcceptPacket(key, mail.payload(), lock.token).request(pipeline, connection)
                 .then((result) -> {
+                    lock.isMailProcess = false;
+                    eventLoop.assertThread();
                     if (result instanceof C2SMailResponsePacket response) {
                         if (!lockMap.isOwner(key, connection.transport(), response.token())) {
                             log.error("Клиент {} принял mail без блокировки! {} {}", connection.transport(), mail, response);
@@ -233,6 +238,7 @@ public class ServerLockHandler implements ChannelHandler {
         public final SocketConnection owner;
         public long lastConfirm;
         public int snapshotVersion;
+        public boolean isMailProcess = false;
 
         public LockData(UUID key, SocketConnection owner, int token) {
             this.key = key;

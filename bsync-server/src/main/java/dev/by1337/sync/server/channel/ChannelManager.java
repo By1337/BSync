@@ -23,8 +23,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 public class ChannelManager {
     private static final Logger log = LoggerFactory.getLogger(ChannelManager.class);
@@ -32,7 +32,7 @@ public class ChannelManager {
     private final Map<String, ServerChannel> channels = new ConcurrentHashMap<>();
     private final DedicatedServer server;
     private final LongAdder receivedPackets = new LongAdder();
-    private final Map<String, Function<ChannelManager, ServerChannel>> customChannels = new ConcurrentHashMap<>();
+    private final Map<String, BiFunction<ChannelManager, String, ServerChannel>> customChannels = new ConcurrentHashMap<>();
 
     public ChannelManager(EventLoopWorkers workers, DedicatedServer server) {
         this.workers = workers;
@@ -100,7 +100,7 @@ public class ChannelManager {
                         connection.write(new S2CChannelStatsPacket(id, false));
                     } else {
                         try {
-                            var ch = maker.apply(this);
+                            var ch = maker.apply(this, id);
                             Objects.requireNonNull(ch);
                             connection.write(new S2CChannelStatsPacket(id, true));
                             ch.handle(new ClientConnectMessage(connection), connection);
@@ -114,7 +114,7 @@ public class ChannelManager {
         }
     }
 
-    public void registerCustomChannelType(String s, Function<ChannelManager, ServerChannel> maker) {
+    public void registerCustomChannelType(String s, BiFunction<ChannelManager, String, ServerChannel> maker) {
         customChannels.put(s, maker);
     }
 
