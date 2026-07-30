@@ -26,7 +26,8 @@ public final class UUID2PlayerNameRepository implements K2VTable<UUID, String> {
     }
 
     public void createTable() throws SQLException {
-        String sql = """
+        try (Connection connection = dataSource.getConnection()) {
+            String sql = """
                 CREATE TABLE IF NOT EXISTS `%s` (
                     `id` BINARY(16) NOT NULL,
                     `updated_at` TIMESTAMP NOT NULL
@@ -34,16 +35,27 @@ public final class UUID2PlayerNameRepository implements K2VTable<UUID, String> {
                         ON UPDATE CURRENT_TIMESTAMP,
                     `data` VARCHAR(16)
                         CHARACTER SET utf8mb4
-                        COLLATE utf8mb4_0900_as_ci
+                        COLLATE %s
                         NOT NULL,
-                
+
                     PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC""".formatted(tableName);
+                ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC
+                """.formatted(tableName, detectCollation(connection));
 
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute(sql);
+            }
+        }
+    }
 
-            statement.execute(sql);
+    private String detectCollation(Connection connection) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SHOW COLLATION LIKE 'utf8mb4_0900_as_ci'");
+             ResultSet rs = ps.executeQuery()) {
+
+            return rs.next()
+                    ? "utf8mb4_0900_as_ci"
+                    : "utf8mb4_unicode_ci";
         }
     }
 
