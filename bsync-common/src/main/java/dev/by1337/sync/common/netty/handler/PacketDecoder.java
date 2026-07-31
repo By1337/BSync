@@ -21,7 +21,7 @@ public class PacketDecoder extends ByteToMessageDecoder {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buf, List<Object> out) throws Exception {
-        var v = Packets.read(buf, protocolVersion);
+        var v = Packets.readGlobal(buf, protocolVersion);
         if (buf.readableBytes() > 0) {
             throw new DecoderException("Packet " + v + " has more bytes than expected " + buf.readableBytes());
         }

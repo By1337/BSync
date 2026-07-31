@@ -358,7 +358,7 @@ public class ServerLockHandler implements ChannelHandler {
         }
 
         public int nextMailId() {
-            return mailIds++;
+            return ++mailIds;
         }
 
         public MailboxRepository.Mail peekNextMail(UUID uuid) {

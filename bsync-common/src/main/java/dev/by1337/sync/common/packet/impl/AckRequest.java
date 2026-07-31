@@ -8,12 +8,12 @@ import io.netty.buffer.ByteBuf;
 public record AckRequest(Packet payload) implements Packet, ExpectsResponse<AckRequest.AckResponse> {
 
     public AckRequest(ByteBuf buf, int protocolVersion) {
-        this(Packets.read(buf, protocolVersion));
+        this(Packets.readGlobal(buf, protocolVersion));
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
-        Packets.write(buf, protocolVersion, payload);
+        Packets.writeGlobal(buf, protocolVersion, payload);
     }
 
     public record AckResponse() implements Packet{

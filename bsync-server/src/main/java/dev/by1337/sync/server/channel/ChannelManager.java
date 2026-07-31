@@ -1,7 +1,7 @@
 package dev.by1337.sync.server.channel;
 
 import dev.by1337.sync.common.channel.ChannelType;
-import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.*;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
@@ -47,15 +47,19 @@ public class ChannelManager {
         if (channels.containsKey(id)) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
-        ServerChannel serverChannel = new ServerChannel(
+        ServerChannel channel = new ServerChannel(
                 id,
                 worker,
                 server
         );
-        init.accept(serverChannel);
-        channels.put(id, serverChannel);
-        serverChannel.onRegister();
-        return serverChannel;
+        init.accept(channel);
+        if (channels.putIfAbsent(id, channel) != null) {
+            throw new IllegalArgumentException("Channel with id " + id + " already exists");
+        }
+        var packets = channel.buildPacketRegistries();
+        ChannelRegistryContext.onChannelOpen(id, packets);
+        channel.onRegister();
+        return channel;
     }
 
     public void onReceive(Packet packet, Connection connection) {
@@ -75,24 +79,31 @@ public class ChannelManager {
                 log.error("Received packet for unknown channel {} {} {}", id, connection, payload);
                 connection.write(new S2CChannelStatsPacket(id, false));
             }
-        } else if (packet instanceof C2SOpenChannelPacket(String id, String channelType)) {
+        } else if (packet instanceof C2SOpenChannelPacket(
+                String id, String channelType, PacketRegistries.Snapshot registries
+        )) {
             var channel = channels.get(id);
             if (channel != null) {
-                connection.write(new S2CChannelStatsPacket(id, true));
-                channel.handle(new ClientConnectMessage(connection), connection);
+                var ok = matchesRegistries(id, registries);
+                connection.write(new S2CChannelStatsPacket(id, ok));
+                if (ok) channel.handle(new ClientConnectMessage(connection), connection);
             } else {
                 if (channelType.equals(ChannelType.LOCKS)) {
-                    channel = addChannel(id, c ->
-                            c.pipeline().addLast("locks", new ServerLockHandler())
+                    channel = addChannel(id, c -> c
+                            .addRegistries(Packets.BSYNC_LOCKS)
+                            .pipeline().addLast("locks", new ServerLockHandler())
                     );
-                    connection.write(new S2CChannelStatsPacket(id, true));
-                    channel.handle(new ClientConnectMessage(connection), connection);
+                    var ok = matchesRegistries(id, registries);
+                    connection.write(new S2CChannelStatsPacket(id, ok));
+                    if (ok) channel.handle(new ClientConnectMessage(connection), connection);
                 } else if (channelType.equals(ChannelType.PUBLISHER)) {
-                    channel = addChannel(id, c ->
-                            c.pipeline().addLast("publisher", new PublisherHandler())
+                    channel = addChannel(id, c -> c
+                            .addRegistries(Packets.BSYNC_PUBLISH)
+                            .pipeline().addLast("publisher", new PublisherHandler())
                     );
-                    connection.write(new S2CChannelStatsPacket(id, true));
-                    channel.handle(new ClientConnectMessage(connection), connection);
+                    var ok = matchesRegistries(id, registries);
+                    connection.write(new S2CChannelStatsPacket(id, ok));
+                    if (ok) channel.handle(new ClientConnectMessage(connection), connection);
                 } else {
                     var maker = customChannels.get(channelType);
                     if (maker == null) {
@@ -102,8 +113,10 @@ public class ChannelManager {
                         try {
                             var ch = maker.apply(this, id);
                             Objects.requireNonNull(ch);
-                            connection.write(new S2CChannelStatsPacket(id, true));
-                            ch.handle(new ClientConnectMessage(connection), connection);
+                            var ok = matchesRegistries(id, registries);
+                            connection.write(new S2CChannelStatsPacket(id, ok));
+                            if (ok) ch.handle(new ClientConnectMessage(connection), connection);
+
                         } catch (Exception e) {
                             log.error("Failed to create custom channel {} {}", id, channelType, e);
                             connection.write(new S2CChannelStatsPacket(id, false));
@@ -112,6 +125,19 @@ public class ChannelManager {
                 }
             }
         }
+    }
+
+    private boolean matchesRegistries(String id, PacketRegistries.Snapshot registries) {
+        var packets = ChannelRegistryContext.getByChannel(id);
+        if (packets == null) {
+            log.error("registered channel {} has no packets!", id);
+            return false;
+        }
+        if (!packets.isLikeA(registries)) {
+            log.error("packet registries do not match!! {} server: {} client: {}", id, packets.createSnapshot(), registries);
+            return false;
+        }
+        return true;
     }
 
     public void registerCustomChannelType(String s, BiFunction<ChannelManager, String, ServerChannel> maker) {

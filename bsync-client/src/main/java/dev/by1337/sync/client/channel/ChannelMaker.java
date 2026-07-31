@@ -7,6 +7,7 @@ import dev.by1337.sync.client.channel.handler.lock.Locks;
 import dev.by1337.sync.client.channel.handler.pub.ClientPublisherHandler;
 import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
+import dev.by1337.sync.common.packet.Packets;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -35,6 +36,7 @@ public class ChannelMaker {
             cc.pipeline()
                     //.addLast("requests", new RequestsHandler())
                     .addLast("locks", locks);
+            cc.addRegistries(Packets.BSYNC_LOCKS);
         });
         var result = (ClientLocksHandler) v.pipeline().getHandler("locks");
         return new ChannelData<Locks>() {
@@ -55,6 +57,7 @@ public class ChannelMaker {
             cc.pipeline()
                     // .addLast("requests", new RequestsHandler())
                     .addLast("publisher", new ClientPublisherHandler(reader));
+            cc.addRegistries(Packets.BSYNC_PUBLISH);
         });
         return (ClientPublisherHandler) v.pipeline().getHandler("publisher");
     }

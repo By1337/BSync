@@ -9,14 +9,14 @@ import io.netty.handler.codec.EncoderException;
 public record RequestPacket(int uid, ChannelMessage payload) implements Packet {
 
     public RequestPacket(ByteBuf buf, int protocolVersion) {
-        this(buf.readInt(), Packets.read(buf, protocolVersion));
+        this(buf.readInt(), Packets.readGlobal(buf, protocolVersion));
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         buf.writeInt(uid);
         if (payload instanceof Packet p)
-            Packets.write(buf, protocolVersion, p);
+            Packets.writeGlobal(buf, protocolVersion, p);
         else throw new EncoderException("Trying to send " + payload);
     }
 

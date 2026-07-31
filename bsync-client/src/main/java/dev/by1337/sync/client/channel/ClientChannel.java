@@ -7,11 +7,17 @@ import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.PacketRegistries;
+import dev.by1337.sync.common.packet.PacketRegistry;
+import dev.by1337.sync.common.packet.Packets;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -23,6 +29,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     private final Pipeline pipeline;
     private final String channelType;
     private final AtomicBoolean channelActive = new AtomicBoolean();
+    private final List<PacketRegistry> registries = new ArrayList<>();
 
     public ClientChannel(Connection connection, String id, EventLoopWorker eventLoop, String channelType) {
         this.connection = connection;
@@ -31,6 +38,19 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
         this.eventLoop = eventLoop;
         pipeline = new Pipeline(eventLoop);
         this.channelType = channelType;
+        registries.add(Packets.BSYNC_MAIN);
+    }
+    public ClientChannel addRegistries(PacketRegistry... registries) {
+        this.registries.addAll(Arrays.asList(registries));
+        return this;
+    }
+    public PacketRegistries buildPacketRegistries() {
+        PacketRegistries result = new PacketRegistries();
+        for (int id = 0; id < registries.size(); id++) {
+            var r = registries.get(id);
+            result.add(id, r.id(), r);
+        }
+        return result;
     }
 
     public Pipeline pipeline() {

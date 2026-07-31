@@ -22,6 +22,6 @@ public class PacketEncoder extends MessageToByteEncoder<Packet> {
         if (LOG_PACKETS) {
             log.info("[SEND:{}] {}", ctx.channel().remoteAddress(), packet);
         }
-        Packets.write(byteBuf, protocolVersion, packet);
+        Packets.writeGlobal(byteBuf, protocolVersion, packet);
     }
 }

@@ -9,10 +9,7 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CNoncePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CPostLoginPacket;
 import dev.by1337.sync.common.security.Ed25519;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +48,24 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
             } else {
                 channel = future.channel();
                 channel.pipeline().addLast("handler", ConnectionHandler.this);
+                channel.pipeline().addLast("exception_handler", new ChannelDuplexHandler() {
+                    @Override
+                    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+                        ConnectionHandler.this.exceptionCaught(ctx, cause);
+                    }
+
+                    @Override
+                    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+                        promise.addListener(f -> {
+                            if (!f.isSuccess()) {
+                                log.error("Outbound error", f.cause());
+                                ctx.close();
+                            }
+                        });
+
+                        ctx.write(msg, promise);
+                    }
+                });
                 channel.writeAndFlush(new C2SHelloPacket(Packets.PROTOCOL_VERSION, id));
             }
         });
@@ -91,6 +106,9 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
                 flushScheduled.set(false);
             }, 2, TimeUnit.MILLISECONDS);
         }
+    }
+    public Channel channel(){
+        return channel;
     }
 
     public boolean authorized() {

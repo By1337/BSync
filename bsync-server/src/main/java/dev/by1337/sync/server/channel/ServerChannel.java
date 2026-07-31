@@ -6,6 +6,9 @@ import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.PacketRegistries;
+import dev.by1337.sync.common.packet.PacketRegistry;
+import dev.by1337.sync.common.packet.Packets;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
@@ -15,6 +18,8 @@ import dev.by1337.sync.server.network.Connection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -28,6 +33,7 @@ public class ServerChannel {
     private final DedicatedServer server;
     private final List<SocketConnection> connections = new CopyOnWriteArrayList<>();
     private Function<ServerChannelRuntime, ChannelRuntime> runtimeSpoofer;
+    private final List<PacketRegistry> registries = new ArrayList<>();
 
     public ServerChannel(String id, EventLoopWorker eventLoop, DedicatedServer server) {
         this.id = id;
@@ -35,6 +41,19 @@ public class ServerChannel {
         log = LoggerFactory.getLogger(id + "|Channel");
         pipeline = new Pipeline(eventLoop);
         this.server = server;
+        registries.add(Packets.BSYNC_MAIN);
+    }
+    public ServerChannel addRegistries(PacketRegistry... registries) {
+        this.registries.addAll(Arrays.asList(registries));
+        return this;
+    }
+    public PacketRegistries buildPacketRegistries() {
+        PacketRegistries result = new PacketRegistries();
+        for (int id = 0; id < registries.size(); id++) {
+            var r = registries.get(id);
+            result.add(id, r.id(), r);
+        }
+        return result;
     }
 
     public Pipeline pipeline() {

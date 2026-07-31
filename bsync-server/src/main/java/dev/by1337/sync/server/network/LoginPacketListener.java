@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
 public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
@@ -39,7 +38,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) throws Exception {
-        Packet packet = Packets.read(buf, protocolVersion);
+        Packet packet = Packets.readGlobal(buf, protocolVersion);
         if (state == State.HELLO) {
             if (packet instanceof C2SHelloPacket(int protocol, String id1)) {
                 protocolVersion = protocol;
@@ -90,7 +89,7 @@ public class LoginPacketListener extends SimpleChannelInboundHandler<ByteBuf> {
 
     private void send(ChannelHandlerContext ctx, Packet packet) {
         var buf = ctx.channel().alloc().ioBuffer();
-        Packets.write(buf, protocolVersion, packet);
+        Packets.writeGlobal(buf, protocolVersion, packet);
         ctx.channel().writeAndFlush(buf);
     }
 

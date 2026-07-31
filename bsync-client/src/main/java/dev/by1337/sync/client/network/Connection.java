@@ -2,15 +2,16 @@ package dev.by1337.sync.client.network;
 
 import dev.by1337.sync.client.channel.ClientChannel;
 import dev.by1337.sync.client.config.ConnectionConfig;
-import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
 import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.ChannelRegistryContext;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.packet.impl.PingPacket;
 import dev.by1337.sync.common.packet.impl.PongPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
+import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.util.SingleSemaphore;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.common.work.EventLoopWorkers;
@@ -60,26 +61,61 @@ public class Connection implements SocketConnection {
     }
 
     public void removeChannel(String id) {
-        var v = channels.remove(id);
-        if (v != null) {
-            v.close();
+        var v = channels.get(id);
+        if (v == null) {
+            return;
+        }
+
+        try {
+            v.close().get(15, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.error("Error closing channel", e);
+        }
+
+        if (connection == null) {
+            ChannelRegistryContext.onChannelClose(id);
+            channels.remove(id);
+            return;
+        }
+        var channel = connection.channel();
+
+        Runnable task = () -> {
+            BSUtils.safe(channel::flush);
+            ChannelRegistryContext.onChannelClose(id);
+            channels.remove(id);
+        };
+
+        if (channel.eventLoop().inEventLoop()) {
+            task.run();
+        } else {
+            try {
+                channel.eventLoop().submit(task).sync();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
         }
     }
 
     public ClientChannel addChannel(String id, String channelType, Consumer<ClientChannel> init) {
         return addChannel(id, channelType, init, workers.getNext());
     }
+
     public ClientChannel addChannel(String id, String channelType, Consumer<ClientChannel> init, EventLoopWorker worker) {
         if (closing.get()) throw new IllegalStateException("Connection is closed");
-        if (channels.containsKey(id)) {
+        if (channels.get(id) != null) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
         ClientChannel channel = new ClientChannel(
                 this, id, worker, channelType
         );
         init.accept(channel);
-        channels.put(id, channel);
-        write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+        if (channels.putIfAbsent(id, channel) != null) {
+            throw new IllegalArgumentException("Channel with id " + id + " already exists");
+        }
+        var packets = channel.buildPacketRegistries();
+        ChannelRegistryContext.onChannelOpen(id, packets);
+        write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), packets.createSnapshot()));
         return channel;
     }
 
@@ -101,7 +137,7 @@ public class Connection implements SocketConnection {
                     executor.schedule(() -> {
                         //todo пакет и потеряться может
                         if (channels.get(channel.id()) == channel)
-                            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+                            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), ChannelRegistryContext.getByChannel(channel.id()).createSnapshot()));
                     }, 1_000);
                 }
             }
@@ -116,7 +152,7 @@ public class Connection implements SocketConnection {
             write(new PongPacket(System.currentTimeMillis()));
         } else if (packet instanceof PongPacket p) {
             ping = System.currentTimeMillis() - p.timestamp();
-           // log.info("ping {}", ping);
+            // log.info("ping {}", ping);
         } else {
             log.error("Packet received unknown packet {}", packet);
         }
@@ -146,7 +182,7 @@ public class Connection implements SocketConnection {
 
     private void onChannelActive() {
         for (ClientChannel channel : List.copyOf(channels.values())) {
-            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType()));
+            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), ChannelRegistryContext.getByChannel(channel.id()).createSnapshot()));
         }
     }
 

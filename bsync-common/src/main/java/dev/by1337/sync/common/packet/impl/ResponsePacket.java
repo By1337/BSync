@@ -10,7 +10,7 @@ import org.jetbrains.annotations.Nullable;
 public record ResponsePacket(int uid, @Nullable ChannelMessage payload) implements Packet {
 
     public ResponsePacket(ByteBuf buf, int protocolVersion) {
-        this(buf.readInt(), buf.readBoolean() ? Packets.read(buf, protocolVersion) : null);
+        this(buf.readInt(), buf.readBoolean() ? Packets.readGlobal(buf, protocolVersion) : null);
     }
 
     @Override
@@ -19,7 +19,7 @@ public record ResponsePacket(int uid, @Nullable ChannelMessage payload) implemen
         buf.writeBoolean(payload != null);
         if (payload != null) {
             if (payload instanceof Packet p)
-                Packets.write(buf, protocolVersion, p);
+                Packets.writeGlobal(buf, protocolVersion, p);
             else throw new EncoderException("Trying to send " + payload);
         }
     }
