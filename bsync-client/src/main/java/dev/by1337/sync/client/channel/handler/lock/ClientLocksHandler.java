@@ -249,6 +249,16 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
         return arr == null ? "null" : Base64.getEncoder().encodeToString(arr);
     }
 
+    @Override
+    public void loadMails(UUID key) {
+        if (!ready) return;
+        eventLoop.execute(() -> {
+            var lock = locks.get(key);
+            if (lock == null || lock.isPending()) return;
+            remote.write(new C2SPollAllMailsPacket(key, lock.token));
+        });
+    }
+
     // 2 lockAndLoadData - побеждает первый
     // lockAndLoadData - во время наличия блокировки не возможен
     @Override
@@ -288,10 +298,6 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                                 actualLock.pending = false;
                                 actualLock.snapshot = status.blob();
                                 callback.run(v -> v.accept(Locks.LockStatus.SUCCESS, status.blob()));
-                                //callback может вызвать unlock
-                                if (isLocked(key)) {
-                                    remote.write(new C2SPollAllMailsPacket(key, status.token()));
-                                }
                             } else {
                                 log.error("Failed to get lock for {} response {}", key, status);
                                 callback.run(v -> v.accept(Locks.LockStatus.FAILURE, null));

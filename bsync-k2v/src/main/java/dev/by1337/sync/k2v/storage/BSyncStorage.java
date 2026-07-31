@@ -56,6 +56,7 @@ public class BSyncStorage implements PlayerDataStorage {
     @Override
     @Deprecated
     public void doMailsLoad(UUID key) {
+        locks.loadMails(key);
     }
 
     @Override

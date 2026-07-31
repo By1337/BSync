@@ -50,6 +50,11 @@ public class GroupLocks implements Locks {
         return false;
     }
 
+    @Override
+    public void loadMails(UUID key) {
+        group.route(key).loadMails(key);
+    }
+
     public void close() {
         for (ChannelMaker.ChannelData<Locks> channel : group.channels()) {
             channel.close();

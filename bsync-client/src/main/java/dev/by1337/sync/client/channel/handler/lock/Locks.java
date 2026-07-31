@@ -20,6 +20,7 @@ public interface Locks {
 
     int lockAndLoadData(UUID key, BiConsumer<LockStatus, byte @Nullable []> callback);
     boolean isReady();
+    void loadMails(UUID key);
     enum LockStatus {
         SUCCESS,
         FAILURE

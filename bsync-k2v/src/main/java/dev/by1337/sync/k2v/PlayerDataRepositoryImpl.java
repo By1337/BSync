@@ -181,7 +181,7 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(PlayerJoinEvent event) {
         var player = event.getPlayer();
         if (!player.isOnline()) return;
@@ -190,6 +190,7 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
             player.kick(Component.text("Failed to load player data!"));
         } else {
             v.joinTime = System.currentTimeMillis();
+            storage.doMailsLoad(player.getUniqueId());
         }
     }
 
@@ -228,7 +229,6 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
             try {
                 T userData = dataManager.read(payload, key);
                 users.put(key, new Wrapped<>(userData));
-                storage.doMailsLoad(key);
                 future.complete(userData);
                 return;
             } catch (Exception e) {
