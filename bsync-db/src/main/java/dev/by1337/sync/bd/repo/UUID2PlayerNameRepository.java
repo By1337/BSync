@@ -28,19 +28,19 @@ public final class UUID2PlayerNameRepository implements K2VTable<UUID, String> {
     public void createTable() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             String sql = """
-                CREATE TABLE IF NOT EXISTS `%s` (
-                    `id` BINARY(16) NOT NULL,
-                    `updated_at` TIMESTAMP NOT NULL
-                        DEFAULT CURRENT_TIMESTAMP
-                        ON UPDATE CURRENT_TIMESTAMP,
-                    `data` VARCHAR(16)
-                        CHARACTER SET utf8mb4
-                        COLLATE %s
-                        NOT NULL,
-
-                    PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC
-                """.formatted(tableName, detectCollation(connection));
+                    CREATE TABLE IF NOT EXISTS `%s` (
+                        `id` BINARY(16) NOT NULL,
+                        `updated_at` TIMESTAMP NOT NULL
+                            DEFAULT CURRENT_TIMESTAMP
+                            ON UPDATE CURRENT_TIMESTAMP,
+                        `data` VARCHAR(16)
+                            CHARACTER SET utf8mb4
+                            COLLATE %s
+                            NOT NULL,
+                    
+                        PRIMARY KEY (`id`)
+                    ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC
+                    """.formatted(tableName, detectCollation(connection));
 
             try (Statement statement = connection.createStatement()) {
                 statement.execute(sql);
@@ -56,6 +56,8 @@ public final class UUID2PlayerNameRepository implements K2VTable<UUID, String> {
             return rs.next()
                     ? "utf8mb4_0900_as_ci"
                     : "utf8mb4_unicode_ci";
+        } catch (SQLException e) {
+            return "utf8mb4_unicode_ci";
         }
     }
 
