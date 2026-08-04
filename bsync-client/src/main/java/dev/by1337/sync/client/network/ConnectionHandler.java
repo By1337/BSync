@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
     private static final Logger log = LoggerFactory.getLogger(ConnectionHandler.class);
@@ -40,8 +41,8 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
 
     }
 
-    public void connect() {
-        bootstrap.connect(connectionConfig.ip(), connectionConfig.port()).addListener((ChannelFutureListener) future -> {
+    public void connect(Consumer<Channel> init) {
+         bootstrap.connect(connectionConfig.ip(), connectionConfig.port()).addListener((ChannelFutureListener) future -> {
             if (!future.isSuccess()) {
                 authorized = false;
                 manager.onClosed(this);
@@ -66,6 +67,7 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
                         ctx.write(msg, promise);
                     }
                 });
+                init.accept(channel);
                 channel.writeAndFlush(new C2SHelloPacket(Packets.PROTOCOL_VERSION, id));
             }
         });
@@ -107,7 +109,8 @@ public class ConnectionHandler extends SimpleChannelInboundHandler<Packet> {
             }, 2, TimeUnit.MILLISECONDS);
         }
     }
-    public Channel channel(){
+
+    public Channel channel() {
         return channel;
     }
 

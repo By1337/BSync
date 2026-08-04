@@ -1,5 +1,6 @@
 package dev.by1337.sync.common.netty.handler;
 
+import dev.by1337.sync.common.packet.ChannelRegistryContext;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -21,13 +22,15 @@ public class PacketDecoder extends ByteToMessageDecoder {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buf, List<Object> out) throws Exception {
-        var v = Packets.readGlobal(buf, protocolVersion);
-        if (buf.readableBytes() > 0) {
-            throw new DecoderException("Packet " + v + " has more bytes than expected " + buf.readableBytes());
+        try (var ignored = ChannelRegistryContext.setCurrentNettyChannel(ctx.channel())) {
+            var v = Packets.readGlobal(buf, protocolVersion);
+            if (buf.readableBytes() > 0) {
+                throw new DecoderException("Packet " + v + " has more bytes than expected " + buf.readableBytes());
+            }
+            if (LOG_PACKETS) {
+                log.info("[READ:{}] {}", ctx.channel().remoteAddress(), v);
+            }
+            out.add(v);
         }
-        if (LOG_PACKETS){
-            log.info("[READ:{}] {}", ctx.channel().remoteAddress(), v);
-        }
-        out.add(v);
     }
 }

@@ -1,7 +1,9 @@
 package dev.by1337.sync.server.network;
 
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
+import dev.by1337.sync.common.packet.ChannelRegistryContext;
 import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.PacketRegistries;
 import dev.by1337.sync.common.packet.impl.PingPacket;
 import dev.by1337.sync.common.packet.impl.PongPacket;
 import dev.by1337.sync.server.DedicatedServer;
@@ -23,12 +25,15 @@ public class Connection extends SimpleChannelInboundHandler<Packet> implements S
     private final int protocolVersion;
     private final AtomicBoolean flushScheduled = new AtomicBoolean();
     private int ping;
+    private final ChannelRegistryContext registryContext;
 
     public Connection(Channel channel, DedicatedServer server, String id, int protocolVersion) {
         this.channel = channel;
         this.server = server;
         this.id = id;
         this.protocolVersion = protocolVersion;
+        registryContext = new ChannelRegistryContext();
+        channel.attr(ChannelRegistryContext.CHANNEL_REGISTRY_CONTEXT).set(registryContext);
     }
 
     @Override
@@ -80,6 +85,14 @@ public class Connection extends SimpleChannelInboundHandler<Packet> implements S
             log.info("Disconnect unauthorized connection {}, reason: {}", ctx.channel().remoteAddress(), message);
         }
         server.onDisconnect(this);
+    }
+
+    public void onChannelClose(String id) {
+        registryContext.onChannelClose(id);
+    }
+
+    public void onChannelOpen(String id, PacketRegistries registries) {
+        registryContext.onChannelOpen(id, registries);
     }
 
     public Channel channel() {

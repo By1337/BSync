@@ -38,12 +38,14 @@ public class Connection implements SocketConnection {
     private long ping = 0;
     private final SingleSemaphore reconnectSemaphore = new SingleSemaphore();
     private final EventLoopWorker executor;
+    private final ChannelRegistryContext registryContext;
 
     public Connection(ConnectionConfig config, EventLoopWorkers workers, String id, ClientBootstrap bootstrap) {
         this.config = config;
         this.workers = workers;
         this.id = id;
         this.bootstrap = bootstrap;
+        registryContext = new ChannelRegistryContext();
         executor = workers.getNext();
         pingTask(executor);
     }
@@ -57,7 +59,7 @@ public class Connection implements SocketConnection {
 
     public void connect() {
         this.connection = new ConnectionHandler(id, config, bootstrap, this);
-        this.connection.connect();
+        this.connection.connect(c -> c.attr(ChannelRegistryContext.CHANNEL_REGISTRY_CONTEXT).set(registryContext));
     }
 
     public void removeChannel(String id) {
@@ -73,7 +75,7 @@ public class Connection implements SocketConnection {
         }
 
         if (connection == null) {
-            ChannelRegistryContext.onChannelClose(id);
+            registryContext.onChannelClose(id);
             channels.remove(id);
             return;
         }
@@ -81,7 +83,7 @@ public class Connection implements SocketConnection {
 
         Runnable task = () -> {
             BSUtils.safe(channel::flush);
-            ChannelRegistryContext.onChannelClose(id);
+            registryContext.onChannelClose(id);
             channels.remove(id);
         };
 
@@ -114,7 +116,7 @@ public class Connection implements SocketConnection {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
         var packets = channel.buildPacketRegistries();
-        ChannelRegistryContext.onChannelOpen(id, packets);
+        registryContext.onChannelOpen(id, packets);
         write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), packets.createSnapshot()));
         return channel;
     }
@@ -137,7 +139,7 @@ public class Connection implements SocketConnection {
                     executor.schedule(() -> {
                         //todo пакет и потеряться может
                         if (channels.get(channel.id()) == channel)
-                            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), ChannelRegistryContext.getByChannel(channel.id()).createSnapshot()));
+                            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), registryContext.getByChannel(channel.id()).createSnapshot()));
                     }, 1_000);
                 }
             }
@@ -170,7 +172,7 @@ public class Connection implements SocketConnection {
                 reconnectSemaphore.release();
                 log.info("Reconnecting {}:{}", config.ip(), config.port());
                 this.connection = new ConnectionHandler(id, config, bootstrap, this);
-                this.connection.connect();
+                this.connection.connect(c -> c.attr(ChannelRegistryContext.CHANNEL_REGISTRY_CONTEXT).set(registryContext));
             }, 2, TimeUnit.SECONDS);
         }
     }
@@ -182,7 +184,7 @@ public class Connection implements SocketConnection {
 
     private void onChannelActive() {
         for (ClientChannel channel : List.copyOf(channels.values())) {
-            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), ChannelRegistryContext.getByChannel(channel.id()).createSnapshot()));
+            write(new C2SOpenChannelPacket(channel.id(), channel.getChannelType(), registryContext.getByChannel(channel.id()).createSnapshot()));
         }
     }
 

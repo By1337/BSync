@@ -4,7 +4,7 @@
     <parent>
         <groupId>dev.by1337.sync</groupId>
         <artifactId>BSync</artifactId>
-        <version>1.3</version>
+        <version>1.3.1</version>
     </parent>
     <artifactId>bsync-server</artifactId>
     <properties>
@@ -101,7 +101,7 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-db</artifactId>
-            <version>1.3</version>
+            <version>1.3.1</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -118,12 +118,12 @@
         <dependency>
             <groupId>dev.by1337.cmd</groupId>
             <artifactId>BCmd</artifactId>
-            <version>1.3</version>
+            <version>1.4</version>
         </dependency>
         <dependency>
             <groupId>dev.by1337.yaml</groupId>
             <artifactId>common</artifactId>
-            <version>1.5</version>
+            <version>1.6</version>
         </dependency>
         <dependency>
             <groupId>com.zaxxer</groupId>
@@ -221,7 +221,7 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-common</artifactId>
-            <version>1.3</version>
+            <version>1.3.1</version>
         </dependency>
 
         <dependency>
@@ -233,7 +233,7 @@
         <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-client</artifactId>
-            <version>1.3</version>
+            <version>1.3.1</version>
             <scope>test</scope>
         </dependency>
         <dependency>

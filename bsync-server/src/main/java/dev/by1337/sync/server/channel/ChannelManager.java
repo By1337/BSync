@@ -56,8 +56,7 @@ public class ChannelManager {
         if (channels.putIfAbsent(id, channel) != null) {
             throw new IllegalArgumentException("Channel with id " + id + " already exists");
         }
-        var packets = channel.buildPacketRegistries();
-        ChannelRegistryContext.onChannelOpen(id, packets);
+        channel.getPacketRegistries();
         channel.onRegister();
         return channel;
     }
@@ -84,26 +83,26 @@ public class ChannelManager {
         )) {
             var channel = channels.get(id);
             if (channel != null) {
-                var ok = matchesRegistries(id, registries);
+                var ok = matchesRegistries(channel, registries);
                 connection.write(new S2CChannelStatsPacket(id, ok));
-                if (ok) channel.handle(new ClientConnectMessage(connection), connection);
+                if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
             } else {
                 if (channelType.equals(ChannelType.LOCKS)) {
                     channel = addChannel(id, c -> c
                             .addRegistries(Packets.BSYNC_LOCKS)
                             .pipeline().addLast("locks", new ServerLockHandler())
                     );
-                    var ok = matchesRegistries(id, registries);
+                    var ok = matchesRegistries(channel, registries);
                     connection.write(new S2CChannelStatsPacket(id, ok));
-                    if (ok) channel.handle(new ClientConnectMessage(connection), connection);
+                    if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
                 } else if (channelType.equals(ChannelType.PUBLISHER)) {
                     channel = addChannel(id, c -> c
                             .addRegistries(Packets.BSYNC_PUBLISH)
                             .pipeline().addLast("publisher", new PublisherHandler())
                     );
-                    var ok = matchesRegistries(id, registries);
+                    var ok = matchesRegistries(channel, registries);
                     connection.write(new S2CChannelStatsPacket(id, ok));
-                    if (ok) channel.handle(new ClientConnectMessage(connection), connection);
+                    if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
                 } else {
                     var maker = customChannels.get(channelType);
                     if (maker == null) {
@@ -113,9 +112,9 @@ public class ChannelManager {
                         try {
                             var ch = maker.apply(this, id);
                             Objects.requireNonNull(ch);
-                            var ok = matchesRegistries(id, registries);
+                            var ok = matchesRegistries(ch, registries);
                             connection.write(new S2CChannelStatsPacket(id, ok));
-                            if (ok) ch.handle(new ClientConnectMessage(connection), connection);
+                            if (ok) ch.handle(new ClientConnectMessage(connection, registries), connection);
 
                         } catch (Exception e) {
                             log.error("Failed to create custom channel {} {}", id, channelType, e);
@@ -127,14 +126,14 @@ public class ChannelManager {
         }
     }
 
-    private boolean matchesRegistries(String id, PacketRegistries.Snapshot registries) {
-        var packets = ChannelRegistryContext.getByChannel(id);
+    private boolean matchesRegistries(ServerChannel serverChannel, PacketRegistries.Snapshot registries) {
+        var packets = serverChannel.getPacketRegistries();
         if (packets == null) {
-            log.error("registered channel {} has no packets!", id);
+            log.error("registered channel {} has no packets!", serverChannel.id());
             return false;
         }
         if (!packets.isLikeA(registries)) {
-            log.error("packet registries do not match!! {} server: {} client: {}", id, packets.createSnapshot(), registries);
+            log.error("packet registries do not match!! {} server: {} client: {}", serverChannel.id(), packets.createSnapshot(), registries);
             return false;
         }
         return true;

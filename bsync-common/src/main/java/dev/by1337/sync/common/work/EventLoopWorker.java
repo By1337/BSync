@@ -94,7 +94,7 @@ public final class EventLoopWorker {
         } finally {
             long time = System.nanoTime() - start;
             busyNanos.add(time);
-            if (time > 10_000_000){
+            if (time > 50_000_000){
                 log.warn("Task {} took {}ms",r, TimeUnit.NANOSECONDS.toMillis(time));
             }
         }

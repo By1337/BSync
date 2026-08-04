@@ -16,9 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Packets {
     public static final int PROTOCOL_VERSION = 5;
     public static final int LAST_SUPPORTED_VERSION = 5;
-    private static final Map<String, PacketRegistry> registriesMap = new ConcurrentHashMap<>();
 
-    public static final PacketRegistry BSYNC_MAIN = registerPackets(new PacketRegistry("bsync:main", PROTOCOL_VERSION)
+    public static final PacketRegistry BSYNC_MAIN = new PacketRegistry("bsync:main", PROTOCOL_VERSION)
             .add(0, C2SHelloPacket.class, C2SHelloPacket::new)
             .add(1, S2CNoncePacket.class, S2CNoncePacket::new)
             .add(2, C2SLoginPacket.class, C2SLoginPacket::new)
@@ -33,8 +32,8 @@ public class Packets {
             .add(11, C2SOpenChannelPacket.class, C2SOpenChannelPacket::read)
             .add(12, C2SCloseChannelPacket.class, C2SCloseChannelPacket::new)
             .add(13, S2CChannelStatsPacket.class, S2CChannelStatsPacket::new)
-            .lock());
-    public static final PacketRegistry BSYNC_LOCKS = registerPackets(new PacketRegistry("bsync:locks", PROTOCOL_VERSION)
+            .lock();
+    public static final PacketRegistry BSYNC_LOCKS = new PacketRegistry("bsync:locks", PROTOCOL_VERSION)
             .add(0, S2CMailAcceptPacket.class, S2CMailAcceptPacket::new)
             .add(1, C2SMailResponsePacket.class, C2SMailResponsePacket::new)
             .add(2, C2SPushMailPacket.class, C2SPushMailPacket::new)
@@ -47,25 +46,13 @@ public class Packets {
             .add(9, C2SRenewLockPacket.class, C2SRenewLockPacket::new)
             .add(10, C2SFlushBlobPacket.class, C2SFlushBlobPacket::new)
             .add(11, S2CFlushResponsePacket.class, S2CFlushResponsePacket::new)
-            .lock());
-    public static final PacketRegistry BSYNC_LOGS = registerPackets(new PacketRegistry("bsync:logs", PROTOCOL_VERSION)
+            .lock();
+    public static final PacketRegistry BSYNC_LOGS = new PacketRegistry("bsync:logs", PROTOCOL_VERSION)
             .add(0, C2SWriteLogPacket.class, C2SWriteLogPacket::read)
-            .lock());
-    public static final PacketRegistry BSYNC_PUBLISH = registerPackets(new PacketRegistry("bsync:publish", PROTOCOL_VERSION)
+            .lock();
+    public static final PacketRegistry BSYNC_PUBLISH = new PacketRegistry("bsync:publish", PROTOCOL_VERSION)
             .add(0, PublishPacket.class, PublishPacket::new)
-            .lock());
-
-    public static PacketRegistry registerPackets(PacketRegistry registry) {
-        registriesMap.put(registry.id(), registry);
-        return registry;
-    }
-
-    public static @Nullable PacketRegistry lookupPacketRegistry(String id) {
-        return registriesMap.get(id);
-    }
-    public static Collection<PacketRegistry> registries() {
-        return Collections.unmodifiableCollection(registriesMap.values());
-    }
+            .lock();
 
     public static Packet readGlobal(ByteBuf buf, int protocolVersion) throws DecoderException {
         var registries = ChannelRegistryContext.getCurrentChannel();

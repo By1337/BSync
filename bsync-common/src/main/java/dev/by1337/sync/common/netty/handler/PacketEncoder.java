@@ -1,5 +1,6 @@
 package dev.by1337.sync.common.netty.handler;
 
+import dev.by1337.sync.common.packet.ChannelRegistryContext;
 import dev.by1337.sync.common.packet.Packet;
 import dev.by1337.sync.common.packet.Packets;
 import io.netty.buffer.ByteBuf;
@@ -22,6 +23,8 @@ public class PacketEncoder extends MessageToByteEncoder<Packet> {
         if (LOG_PACKETS) {
             log.info("[SEND:{}] {}", ctx.channel().remoteAddress(), packet);
         }
-        Packets.writeGlobal(byteBuf, protocolVersion, packet);
+        try (var ignored = ChannelRegistryContext.setCurrentNettyChannel(ctx.channel())) {
+            Packets.writeGlobal(byteBuf, protocolVersion, packet);
+        }
     }
 }
