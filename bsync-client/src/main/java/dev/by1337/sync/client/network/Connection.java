@@ -79,6 +79,7 @@ public class Connection implements SocketConnection {
             channels.remove(id);
             return;
         }
+        write(new C2SCloseChannelPacket(id));
         var channel = connection.channel();
 
         Runnable task = () -> {
