@@ -98,6 +98,10 @@ public class ServerChannel {
         }
     }
 
+    public void write(SocketConnection connection, Packet packet) {
+        connection.write(new ChanneledPacket(id, packet));
+    }
+
     private dev.by1337.sync.common.channel.pipeline.Connection lookup(SocketConnection connection) {
         return new dev.by1337.sync.common.channel.pipeline.Connection() {
             @Override

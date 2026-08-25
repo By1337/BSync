@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.PriorityQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
@@ -19,6 +20,7 @@ public final class EventLoopWorker {
     private final Thread thread;
     private final String name;
     private final LongAdder busyNanos = new LongAdder();
+    private final Executor executor = this::execute;
 
     public EventLoopWorker(String name) {
         this.name = name;
@@ -30,7 +32,7 @@ public final class EventLoopWorker {
     }
 
     public void execute(Runnable runnable) {
-        if (isWorkerThread()){
+        if (isWorkerThread()) {
             runnable.run();
             return;
         }
@@ -43,8 +45,9 @@ public final class EventLoopWorker {
     public void schedule(Runnable runnable) {
         schedule(runnable, 0);
     }
+
     public void schedule(Runnable runnable, long ms) {
-        if (ms <= 0){
+        if (ms <= 0) {
             if (!queue.offer(runnable)) {
                 log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
             }
@@ -94,8 +97,8 @@ public final class EventLoopWorker {
         } finally {
             long time = System.nanoTime() - start;
             busyNanos.add(time);
-            if (time > 50_000_000){
-                log.warn("Task {} took {}ms",r, TimeUnit.NANOSECONDS.toMillis(time));
+            if (time > 50_000_000) {
+                log.warn("Task {} took {}ms", r, TimeUnit.NANOSECONDS.toMillis(time));
             }
         }
     }
@@ -126,6 +129,10 @@ public final class EventLoopWorker {
 
     public long busyNanosThenReset() {
         return busyNanos.sumThenReset();
+    }
+
+    public Executor asExecutor() {
+        return executor;
     }
 
     public static class ScheduledTask implements Runnable, Comparable<ScheduledTask> {

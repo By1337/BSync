@@ -1,6 +1,9 @@
 package dev.by1337.sync.common.packet;
 
 import dev.by1337.sync.common.packet.impl.*;
+import dev.by1337.sync.common.packet.impl.a2a.A2AFlagResponse;
+import dev.by1337.sync.common.packet.impl.a2a.A2AIntResponse;
+import dev.by1337.sync.common.packet.impl.a2a.A2ALongResponse;
 import dev.by1337.sync.common.packet.impl.a2a.PublishPacket;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.*;
@@ -14,8 +17,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Packets {
-    public static final int PROTOCOL_VERSION = 5;
-    public static final int LAST_SUPPORTED_VERSION = 5;
+    public static final int PROTOCOL_VERSION = 6;
+    public static final int LAST_SUPPORTED_VERSION = 6;
 
     public static final PacketRegistry BSYNC_MAIN = new PacketRegistry("bsync:main", PROTOCOL_VERSION)
             .add(0, C2SHelloPacket.class, C2SHelloPacket::new)
@@ -32,6 +35,9 @@ public class Packets {
             .add(11, C2SOpenChannelPacket.class, C2SOpenChannelPacket::read)
             .add(12, C2SCloseChannelPacket.class, C2SCloseChannelPacket::new)
             .add(13, S2CChannelStatsPacket.class, S2CChannelStatsPacket::new)
+            .add(14, A2AFlagResponse.class, A2AFlagResponse::new)
+            .add(15, A2ALongResponse.class, A2ALongResponse::new)
+            .add(16, A2AIntResponse.class, A2AIntResponse::new)
             .lock();
     public static final PacketRegistry BSYNC_LOCKS = new PacketRegistry("bsync:locks", PROTOCOL_VERSION)
             .add(0, S2CMailAcceptPacket.class, S2CMailAcceptPacket::new)
