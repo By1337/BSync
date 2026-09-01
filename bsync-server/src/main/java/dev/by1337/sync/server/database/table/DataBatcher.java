@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -16,6 +17,7 @@ public class DataBatcher<T> {
     private final Flusher<T> flusher;
     private final EventLoopWorker worker;
     private final int load50;
+    private final AtomicBoolean load50Ping = new AtomicBoolean();
     private volatile boolean closed;
     private final AtomicInteger size = new AtomicInteger();
 
@@ -24,14 +26,13 @@ public class DataBatcher<T> {
         load50 = capacity / 2;
         this.flusher = flusher;
         this.worker = worker;
-        worker.schedule(this::ioTick, 100);
+        worker.repeat(this::ioTick, 100, () -> closed);
     }
 
     private void ioTick() {
         if (closed) return;
         if (size.get() != 0)
             flush(Integer.MAX_VALUE);
-        worker.schedule(this::ioTick, 100);
     }
 
     public void offer(T t) {
@@ -48,8 +49,11 @@ public class DataBatcher<T> {
             }
             size.incrementAndGet();
         } else {
-            if (size.get() >= load50){
-                worker.execute(this::ioTick);
+            if (size.get() >= load50 && load50Ping.compareAndSet(false, true)){
+                worker.execute(() -> {
+                    ioTick();
+                    load50Ping.set(false);
+                });
             }
             size.incrementAndGet();
         }

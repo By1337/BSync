@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 public final class EventLoopWorker {
@@ -55,6 +56,14 @@ public final class EventLoopWorker {
             return;
         }
         execute(() -> scheduled.add(new ScheduledTask(System.nanoTime() + (ms * 1_000_000), runnable)));
+    }
+
+    public void repeat(Runnable r, long period, BooleanSupplier cancelled) {
+        schedule(() -> {
+            if (cancelled.getAsBoolean()) return;
+            r.run();
+            repeat(r, period, cancelled);
+        }, period);
     }
 
     public int size() {
