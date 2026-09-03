@@ -34,7 +34,6 @@ public class ChannelMaker {
             var locks = new ClientLocksHandler();
             locks.lockManager(manager);
             cc.pipeline()
-                    //.addLast("requests", new RequestsHandler())
                     .addLast("locks", locks);
             cc.addRegistries(Packets.BSYNC_LOCKS);
         });
@@ -55,7 +54,6 @@ public class ChannelMaker {
     public static Consumer<byte[]> createPublisher(Connection c, String id, Consumer<byte[]> reader) {
         var v = c.addChannel(id, ChannelType.PUBLISHER, cc -> {
             cc.pipeline()
-                    // .addLast("requests", new RequestsHandler())
                     .addLast("publisher", new ClientPublisherHandler(reader));
             cc.addRegistries(Packets.BSYNC_PUBLISH);
         });

@@ -25,7 +25,7 @@ public class BSync extends JavaPlugin {
     private static File homeDir;
     private static Config config;
     private static Map<String, Connection> connections = new HashMap<>();
-
+    private static EventLoopWorkers workers;
     @Override
     public void onLoad() {
         homeDir = getDataFolder();
@@ -37,7 +37,7 @@ public class BSync extends JavaPlugin {
         if (res.hasError()) {
             getSLF4JLogger().error(res.error());
         }
-        EventLoopWorkers workers = new EventLoopWorkers("bsync-worker-%d", config.workers);
+        workers = new EventLoopWorkers("bsync-worker-%d", config.workers);
         ClientBootstrap clientBootstrap = new ClientBootstrap();
         for (Map.Entry<String, ConnectionConfig> entry : config.servers.entrySet()) {
             var cfg = entry.getValue();
@@ -98,5 +98,13 @@ public class BSync extends JavaPlugin {
         }
         if (result.isEmpty()) throw new IllegalStateException("Unknown server group " + group);
         return result;
+    }
+
+    public static EventLoopWorkers workers() {
+        return workers;
+    }
+
+    public static Map<String, Connection> connections() {
+        return Collections.unmodifiableMap(connections);
     }
 }

@@ -38,7 +38,7 @@ public final class EventLoopWorker {
             return;
         }
         if (!queue.offer(runnable)) {
-            log.warn("Failed to add runnable to queue {}", runnable, new Throwable());
+            log.error("Failed to add runnable to queue {}", runnable, new Throwable());
         }
         LockSupport.unpark(thread);
     }
