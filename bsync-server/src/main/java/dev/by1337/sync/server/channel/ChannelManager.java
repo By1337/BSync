@@ -1,7 +1,9 @@
 package dev.by1337.sync.server.channel;
 
 import dev.by1337.sync.common.channel.ChannelType;
-import dev.by1337.sync.common.packet.*;
+import dev.by1337.sync.common.packet.Packet;
+import dev.by1337.sync.common.packet.PacketRegistries;
+import dev.by1337.sync.common.packet.Packets;
 import dev.by1337.sync.common.packet.impl.ChanneledPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SCloseChannelPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SOpenChannelPacket;
@@ -33,10 +35,12 @@ public class ChannelManager {
     private final DedicatedServer server;
     private final LongAdder receivedPackets = new LongAdder();
     private final Map<String, BiFunction<ChannelManager, String, ServerChannel>> customChannels = new ConcurrentHashMap<>();
+    private final EventLoopWorker channelOpenerWorker;
 
     public ChannelManager(EventLoopWorkers workers, DedicatedServer server) {
         this.workers = workers;
         this.server = server;
+        channelOpenerWorker = workers.getNext();
     }
 
     public ServerChannel addChannel(String id, Consumer<ServerChannel> init) {
@@ -78,48 +82,55 @@ public class ChannelManager {
                 log.error("Received packet for unknown channel {} {} {}", id, connection, payload);
                 connection.write(new S2CChannelStatsPacket(id, false));
             }
-        } else if (packet instanceof C2SOpenChannelPacket(
-                String id, String channelType, PacketRegistries.Snapshot registries
-        )) {
-            var channel = channels.get(id);
-            if (channel != null) {
+        } else if (packet instanceof C2SOpenChannelPacket open) {
+            channelOpenerWorker.execute(() -> openChannel(open, connection));
+        }
+    }
+
+    private void openChannel(C2SOpenChannelPacket packet, Connection connection) {
+        channelOpenerWorker.assertThread();
+        String id = packet.id();
+        String channelType = packet.channelType();
+        PacketRegistries.Snapshot registries = packet.registries();
+
+        var channel = channels.get(id);
+        if (channel != null) {
+            var ok = matchesRegistries(channel, registries);
+            connection.write(new S2CChannelStatsPacket(id, ok));
+            if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
+        } else {
+            if (channelType.equals(ChannelType.LOCKS)) {
+                channel = addChannel(id, c -> c
+                        .addRegistries(Packets.BSYNC_LOCKS)
+                        .pipeline().addLast("locks", new ServerLockHandler())
+                );
+                var ok = matchesRegistries(channel, registries);
+                connection.write(new S2CChannelStatsPacket(id, ok));
+                if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
+            } else if (channelType.equals(ChannelType.PUBLISHER)) {
+                channel = addChannel(id, c -> c
+                        .addRegistries(Packets.BSYNC_PUBLISH)
+                        .pipeline().addLast("publisher", new PublisherHandler())
+                );
                 var ok = matchesRegistries(channel, registries);
                 connection.write(new S2CChannelStatsPacket(id, ok));
                 if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
             } else {
-                if (channelType.equals(ChannelType.LOCKS)) {
-                    channel = addChannel(id, c -> c
-                            .addRegistries(Packets.BSYNC_LOCKS)
-                            .pipeline().addLast("locks", new ServerLockHandler())
-                    );
-                    var ok = matchesRegistries(channel, registries);
-                    connection.write(new S2CChannelStatsPacket(id, ok));
-                    if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
-                } else if (channelType.equals(ChannelType.PUBLISHER)) {
-                    channel = addChannel(id, c -> c
-                            .addRegistries(Packets.BSYNC_PUBLISH)
-                            .pipeline().addLast("publisher", new PublisherHandler())
-                    );
-                    var ok = matchesRegistries(channel, registries);
-                    connection.write(new S2CChannelStatsPacket(id, ok));
-                    if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
+                var maker = customChannels.get(channelType);
+                if (maker == null) {
+                    log.error("Trying to open unsupported channel type! {} {} {}", id, connection, channelType);
+                    connection.write(new S2CChannelStatsPacket(id, false));
                 } else {
-                    var maker = customChannels.get(channelType);
-                    if (maker == null) {
-                        log.error("Trying to open unsupported channel type! {} {} {}", id, connection, channelType);
-                        connection.write(new S2CChannelStatsPacket(id, false));
-                    } else {
-                        try {
-                            var ch = maker.apply(this, id);
-                            Objects.requireNonNull(ch);
-                            var ok = matchesRegistries(ch, registries);
-                            connection.write(new S2CChannelStatsPacket(id, ok));
-                            if (ok) ch.handle(new ClientConnectMessage(connection, registries), connection);
+                    try {
+                        var ch = maker.apply(this, id);
+                        Objects.requireNonNull(ch);
+                        var ok = matchesRegistries(ch, registries);
+                        connection.write(new S2CChannelStatsPacket(id, ok));
+                        if (ok) ch.handle(new ClientConnectMessage(connection, registries), connection);
 
-                        } catch (Exception e) {
-                            log.error("Failed to create custom channel {} {}", id, channelType, e);
-                            connection.write(new S2CChannelStatsPacket(id, false));
-                        }
+                    } catch (Exception e) {
+                        log.error("Failed to create custom channel {} {}", id, channelType, e);
+                        connection.write(new S2CChannelStatsPacket(id, false));
                     }
                 }
             }

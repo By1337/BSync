@@ -8,7 +8,6 @@ import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.security.Ed25519;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import org.bukkit.Bukkit;
-import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +25,7 @@ public class BSync extends JavaPlugin {
     private static Config config;
     private static Map<String, Connection> connections = new HashMap<>();
     private static EventLoopWorkers workers;
+
     @Override
     public void onLoad() {
         homeDir = getDataFolder();
@@ -83,6 +83,10 @@ public class BSync extends JavaPlugin {
             }
         });
         connections.clear();
+    }
+
+    public static String getServerId() {
+        return config.id;
     }
 
     public static Connection getConnection(String name) {

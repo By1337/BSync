@@ -10,7 +10,9 @@ public interface DataManager<T> {
 
     byte @NotNull [] write(@NotNull T data, @NotNull UUID key);
 
-    void acceptMail(@NotNull T data, @NotNull String mail, @NotNull UUID key);
+    default void acceptMail(@NotNull T data, @NotNull String mail, @NotNull UUID key) {
+    }
 
-    void forceUnlock(UUID key);
+    default void forceUnlock(UUID key) {
+    }
 }

@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @ApiStatus.Internal
 public final class ChannelRegistryContext {
-    public static final AttributeKey<ChannelRegistryContext>  CHANNEL_REGISTRY_CONTEXT = AttributeKey.newInstance("channelRegistryContext");
+    public static final AttributeKey<ChannelRegistryContext> CHANNEL_REGISTRY_CONTEXT = AttributeKey.newInstance("channelRegistryContext");
 
     private static final ThreadLocal<PacketRegistries> CURRENT_REGISTRY = new ThreadLocal<>();
     private static final ThreadLocal<Channel> CURRENT_NETTY_CHANNEL = new ThreadLocal<>();
@@ -31,9 +31,9 @@ public final class ChannelRegistryContext {
         channels.remove(id);
     }
 
-    public Scope setCurrentChannel(String id){
+    public Scope setCurrentChannel(String id) {
         var v = channels.get(id);
-        if (v == null){
+        if (v == null) {
             throw new IllegalStateException("Unknown channel id " + id);
         }
         var old = CURRENT_REGISTRY.get();
@@ -45,7 +45,8 @@ public final class ChannelRegistryContext {
                 CURRENT_REGISTRY.set(old);
         };
     }
-    public static Scope setCurrentNettyChannel(Channel channel){
+
+    public static Scope setCurrentNettyChannel(Channel channel) {
         var old = CURRENT_NETTY_CHANNEL.get();
         CURRENT_NETTY_CHANNEL.set(channel);
         return () -> {
@@ -55,7 +56,8 @@ public final class ChannelRegistryContext {
                 CURRENT_NETTY_CHANNEL.set(old);
         };
     }
-    public static @Nullable Channel getCurrentNettyChannel(){
+
+    public static @Nullable Channel getCurrentNettyChannel() {
         return CURRENT_NETTY_CHANNEL.get();
     }
 
