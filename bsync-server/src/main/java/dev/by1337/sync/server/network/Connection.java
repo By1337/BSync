@@ -52,8 +52,8 @@ public class Connection extends SimpleChannelInboundHandler<Packet> implements S
         channel.write(packet);
         if (flushScheduled.compareAndSet(false, true)) {
             channel.eventLoop().schedule(() -> {
-                channel.flush();
                 flushScheduled.set(false);
+                channel.flush();
             }, 2, TimeUnit.MILLISECONDS);
         }
     }

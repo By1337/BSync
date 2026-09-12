@@ -13,6 +13,7 @@ public class Main {
 
         var v = new DedicatedServer();
         v.readTerminal();
+
     }
 
     static {
