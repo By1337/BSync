@@ -31,7 +31,8 @@ public class FilePlayerDataStorage implements PlayerDataStorage {
         }
     }
 
-    public void write(UUID key, byte[] data) {
+    public void write(UUID key, byte @Nullable [] data) {
+        if (data == null) return;
         var tmp = dataFolder.resolve(key + ".dat.tmp");
         try {
             synchronized (route(key)) {
@@ -128,7 +129,7 @@ public class FilePlayerDataStorage implements PlayerDataStorage {
     }
 
     @Override
-    public void pushSnapshot(UUID key, byte[] snapshot) {
+    public void pushSnapshot(UUID key, byte @Nullable [] snapshot) {
         write(key, snapshot);
     }
 

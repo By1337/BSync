@@ -1,5 +1,6 @@
 package dev.by1337.sync.client.channel.handler.lock;
 
+import dev.by1337.sync.common.channel.ChannelType;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
@@ -22,10 +23,24 @@ public interface Locks {
     void unlock(UUID key, int version);
 
     int lockAndLoadData(UUID key, BiConsumer<LockStatus, byte @Nullable []> callback);
+
     boolean isReady();
+
     void loadMails(UUID key);
+
     enum LockStatus {
         SUCCESS,
         FAILURE
+    }
+
+    enum Type {
+        ALL(ChannelType.LOCKS),
+        ONLY_BLOBS(ChannelType.LOCKS_BLOBS_ONLY),
+        ONLY_MAILBOX(ChannelType.LOCKS_MAILBOX_ONLY);
+        public final String channelType;
+
+        Type(String channelType) {
+            this.channelType = channelType;
+        }
     }
 }

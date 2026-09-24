@@ -4,6 +4,7 @@ import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.request.RequestsHandler;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -110,6 +111,12 @@ public class Pipeline {
         }
         throw new IllegalArgumentException("Unknown handler " + name);
     }
+    public @Nullable ChannelHandler getHandlerIfExist(String name) {
+        for (Entry handler : handlers) {
+            if (handler.name.equals(name)) return handler.handler;
+        }
+        return null;
+    }
 
     public <T extends ChannelHandler> T get(Class<T> t) {
         for (Entry handler : handlers) {
@@ -117,7 +124,16 @@ public class Pipeline {
         }
         throw new IllegalArgumentException("Unknown handler " + t);
     }
+    public <T extends ChannelHandler> @Nullable T getIfExist(Class<T> t) {
+        for (Entry handler : handlers) {
+            if (t.isAssignableFrom(handler.handler.getClass())) return t.cast(handler.handler);
+        }
+        return null;
+    }
 
+    public EventLoopWorker eventLoop() {
+        return eventLoop;
+    }
 
     private static class ChannelContextImpl implements ChannelContext, AutoCloseable {
         private final Connection connection;

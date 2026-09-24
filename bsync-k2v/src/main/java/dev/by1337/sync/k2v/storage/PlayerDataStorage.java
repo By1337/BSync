@@ -17,7 +17,7 @@ public interface PlayerDataStorage {
 
     void pushMail(UUID key, String json);
 
-    void pushSnapshot(UUID key, byte[] snapshot);
+    void pushSnapshot(UUID key, byte@Nullable [] snapshot);
 
     CompletableFuture<byte @Nullable []> loadSnapshot(UUID key);
 

@@ -18,6 +18,16 @@ public interface PlayerDataRepository<T> {
     // group://group/<storage-name>
     // server://id/<storage-name>
     static <T> PlayerDataRepository<T> create(String repo, Plugin plugin, DataManager<T> dataManager) {
+        return create(repo, plugin, dataManager, Type.ALL);
+    }
+    static PlayerDataRepository<UUID> createMailBox(String repo, Plugin plugin, DataManager.MailBox dataManager) {
+        return create(repo, plugin, dataManager, Type.ONLY_MAILBOX);
+    }
+    static <T> PlayerDataRepository<T> createOnlyData(String repo, Plugin plugin, DataManager.OnlyData<T> dataManager) {
+        return create(repo, plugin, dataManager, Type.ONLY_BLOBS);
+    }
+
+    static <T> PlayerDataRepository<T> create(String repo, Plugin plugin, DataManager<T> dataManager, Type type) {
         if (repo.startsWith("local://")) {
             return new PlayerDataRepositoryImpl<>(
                     new FilePlayerDataStorage(new File("./bsync/" + plugin.getName() + "/" + repo.substring("local://".length()))),
@@ -28,10 +38,15 @@ public interface PlayerDataRepository<T> {
             String[] args = repo.substring("group://".length()).split("/", 2);
             if (args.length != 2)
                 throw new RuntimeException("Bad storage address! \"" + repo + "\" use \"group://group/<storage-name>\"");
+            var bsyncType = switch (type){
+                case ALL -> Locks.Type.ALL;
+                case ONLY_BLOBS -> Locks.Type.ONLY_BLOBS;
+                case ONLY_MAILBOX -> Locks.Type.ONLY_MAILBOX;
+            };
             var list = BSync.getGroup(args[0]);
             BSyncStorage bss = new BSyncStorage();
-            ChannelMaker.ChannelData<Locks> locks;
-            bss.setLocks(locks = ChannelMaker.createGroupLocks(list, args[1], bss.asBSyncLockManager()));
+            ChannelMaker.ChannelData<Locks> locks = ChannelMaker.createGroupLocks(list, args[1], bss.asBSyncLockManager(), bsyncType);
+            bss.setLocks(locks.get(), locks::close);
             //try to wait to connect
             int x = 50;
             while (x-- > 0 && !locks.get().isReady()){
@@ -42,10 +57,15 @@ public interface PlayerDataRepository<T> {
             String[] args = repo.substring("server://".length()).split("/", 2);
             if (args.length != 2)
                 throw new RuntimeException("Bad storage address! \"" + repo + "\" use \"server://id/<storage-name>\"");
+            var bsyncType = switch (type){
+                case ALL -> Locks.Type.ALL;
+                case ONLY_BLOBS -> Locks.Type.ONLY_BLOBS;
+                case ONLY_MAILBOX -> Locks.Type.ONLY_MAILBOX;
+            };
             var conn = BSync.getConnection(args[0]);
             BSyncStorage bss = new BSyncStorage();
-            ChannelMaker.ChannelData<Locks> locks;
-            bss.setLocks(locks = ChannelMaker.createLocks(conn, args[1], bss.asBSyncLockManager()));
+            ChannelMaker.ChannelData<Locks> locks = ChannelMaker.createLocks(conn, args[1], bss.asBSyncLockManager(), bsyncType);
+            bss.setLocks(locks.get(), locks::close);
             int x = 50;
             while (x-- > 0 && !locks.get().isReady()){
                 LockSupport.parkNanos(2_000_000);
@@ -65,4 +85,10 @@ public interface PlayerDataRepository<T> {
     void pushSnapshot(UUID key, T user);
 
     CompletableFuture<@Nullable T> loadSnapshot(UUID key);
+
+    enum Type {
+        ALL(),
+        ONLY_BLOBS(),
+        ONLY_MAILBOX();
+    }
 }

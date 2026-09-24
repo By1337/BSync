@@ -11,13 +11,13 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
 import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorker;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import javax.print.DocFlavor;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -28,7 +28,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     private Logger log = DEFAULT_LOGGER;
     private EventLoopWorker eventLoop;
     private final Map<UUID, LockData> locks = new ConcurrentHashMap<>();
-    private final Map<UUID, byte[]> recovery = new HashMap<>(256);
+    private final Map<UUID, byte @NotNull []> recovery = new HashMap<>(256);
     private Connection remote;
     private Pipeline pipeline;
     private boolean closing;
@@ -127,7 +127,8 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 for (LockData value : List.copyOf(locks.values())) {
                     lockManager.run(v -> v.forceUnlock(value.key));
                     locks.remove(value.key, value);
-                    recovery.put(value.key, value.snapshot);
+                    if (value.snapshot != null)
+                        recovery.put(value.key, value.snapshot);
                 }
             }
             ctx.fire(msg);
@@ -168,9 +169,10 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
         });
     }
 
-    public void pushSnapshot(UUID key, byte[] snapshot) {
+    public void pushSnapshot(UUID key, byte @Nullable [] snapshot) {
+        if (snapshot == null) return;
         if (!ready) {
-            log.error("Failed to push mail channel is not ready! {} {}", key, arrayToBase64(snapshot));
+            log.error("Failed to push snapshot channel is not ready! {} {}", key, arrayToBase64(snapshot));
             return;
         }
         if (snapshot.length >= MAX_BLOB_SIZE) {
@@ -220,7 +222,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
         new C2SFlushBlobPacket(key, token, version, snapshot).withAck(pipeline, remote)
                 .then(state -> {
                     if (!isLocked(key)) return;
-                    if (!state) {
+                    if (state == null || !state) {
                         if (counter >= 10) {
                             log.error("Failed to flush {} DATA LOST {}", key, arrayToBase64(snapshot));
                         } else {
@@ -246,9 +248,10 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
             if (version != -1 && lock.version != version) return;
             if (lock.isPending()) {
                 locks.remove(key);
-            } else if (closing) {
+            } else if (closing || lock.snapshot == null) {
                 locks.remove(key, lock);
-                remote.write(new C2SFlushBlobPacket(key, lock.token, lock.snapshotVersion, lock.snapshot));
+                if (lock.snapshot != null)
+                    remote.write(new C2SFlushBlobPacket(key, lock.token, lock.snapshotVersion, lock.snapshot));
                 remote.write(new C2SUnlockPacket(key, lock.token));
             } else {
                 new C2SFlushBlobPacket(key, lock.token, lock.snapshotVersion, lock.snapshot).withAck(pipeline, remote)
@@ -285,7 +288,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     }
 
     private int lockAndLoadData(UUID key, BSUtils.FaultIsolation<BiConsumer<LockStatus, byte @Nullable []>> callback) {
-        if (!ready){
+        if (!ready) {
             callback.run(v -> v.accept(LockStatus.FAILURE, null));
             return 0;
         }

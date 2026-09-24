@@ -11,7 +11,9 @@ import dev.by1337.sync.common.packet.impl.s2c.S2CChannelStatsPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.common.work.EventLoopWorkers;
 import dev.by1337.sync.server.DedicatedServer;
-import dev.by1337.sync.server.channel.handler.lock.ServerLockHandler;
+import dev.by1337.sync.server.channel.handler.lock.ServerBlobRepoHandler;
+import dev.by1337.sync.server.channel.handler.lock.ServerLockerHandler;
+import dev.by1337.sync.server.channel.handler.lock.ServerMailboxHandler;
 import dev.by1337.sync.server.channel.handler.pub.PublisherHandler;
 import dev.by1337.sync.server.channel.messages.ClientConnectMessage;
 import dev.by1337.sync.server.channel.messages.ClientDisconnectMessage;
@@ -41,6 +43,26 @@ public class ChannelManager {
         this.workers = workers;
         this.server = server;
         channelOpenerWorker = workers.getNext();
+        bootDefaults();
+    }
+
+    private void bootDefaults() {
+        registerCustomChannelType(ChannelType.LOCKS, (cm, s) -> cm.addChannel(s, c -> c
+                .addRegistries(Packets.BSYNC_LOCKS)
+                .pipeline()
+                .addLast("locker", new ServerLockerHandler())
+                .addLast("blobs", new ServerBlobRepoHandler())
+                .addLast("mailbox", new ServerMailboxHandler())));
+        registerCustomChannelType(ChannelType.LOCKS_BLOBS_ONLY, (cm, s) -> cm.addChannel(s, c -> c
+                .addRegistries(Packets.BSYNC_LOCKS)
+                .pipeline()
+                .addLast("locker", new ServerLockerHandler())
+                .addLast("blobs", new ServerBlobRepoHandler())));
+        registerCustomChannelType(ChannelType.LOCKS_MAILBOX_ONLY, (cm, s) -> cm.addChannel(s, c -> c
+                .addRegistries(Packets.BSYNC_LOCKS)
+                .pipeline()
+                .addLast("locker", new ServerLockerHandler())
+                .addLast("mailbox", new ServerMailboxHandler())));
     }
 
     public ServerChannel addChannel(String id, Consumer<ServerChannel> init) {
@@ -99,15 +121,7 @@ public class ChannelManager {
             connection.write(new S2CChannelStatsPacket(id, ok));
             if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
         } else {
-            if (channelType.equals(ChannelType.LOCKS)) {
-                channel = addChannel(id, c -> c
-                        .addRegistries(Packets.BSYNC_LOCKS)
-                        .pipeline().addLast("locks", new ServerLockHandler())
-                );
-                var ok = matchesRegistries(channel, registries);
-                connection.write(new S2CChannelStatsPacket(id, ok));
-                if (ok) channel.handle(new ClientConnectMessage(connection, registries), connection);
-            } else if (channelType.equals(ChannelType.PUBLISHER)) {
+            if (channelType.equals(ChannelType.PUBLISHER)) {
                 channel = addChannel(id, c -> c
                         .addRegistries(Packets.BSYNC_PUBLISH)
                         .pipeline().addLast("publisher", new PublisherHandler())

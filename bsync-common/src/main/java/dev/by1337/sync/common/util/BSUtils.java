@@ -4,6 +4,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -29,6 +30,14 @@ public class BSUtils {
         void run() throws Exception;
     }
 
+    public static  <T> @Nullable T safeOptional(ESupplier<Optional<T>> s) {
+        try {
+            return s.get().orElse(null);
+        } catch (Exception e) {
+            log.error("Failed to safe run!", e);
+            return null;
+        }
+    }
     public static <T> @Nullable T safe(ESupplier<T> s) {
         try {
             return s.get();

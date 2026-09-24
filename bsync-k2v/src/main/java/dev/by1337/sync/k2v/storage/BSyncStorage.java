@@ -1,6 +1,5 @@
 package dev.by1337.sync.k2v.storage;
 
-import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.channel.handler.lock.LockManager;
 import dev.by1337.sync.client.channel.handler.lock.Locks;
 import org.jetbrains.annotations.Nullable;
@@ -12,17 +11,17 @@ import java.util.function.BiConsumer;
 public class BSyncStorage implements PlayerDataStorage {
     private BiConsumer<UUID, String> mails;
     private Locks locks;
-    private ChannelMaker.ChannelData<Locks> channel;
+    private Runnable closer;
     private O2BTester<UUID> tester;
 
-    public void setLocks(ChannelMaker.ChannelData<Locks> channel) {
-        this.locks = channel.get();
-        this.channel = channel;
+    public void setLocks(Locks locks, Runnable closer) {
+        this.locks = locks;
+        this.closer = closer;
     }
 
     @Override
     public void close() {
-        channel.close();
+        closer.run();
     }
 
     public LockManager asBSyncLockManager() {
