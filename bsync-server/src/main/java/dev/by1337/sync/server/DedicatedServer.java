@@ -104,9 +104,9 @@ public class DedicatedServer {
     public void shutdown() {
         if (!running) return;
         running = false;
-        addonLoader.disableAll();
         BSUtils.safe(channelManager::close);
         BSUtils.safe(connectionListener::stop);
+        addonLoader.disableAll();
         try {
             database.close();
         } catch (Exception e) {

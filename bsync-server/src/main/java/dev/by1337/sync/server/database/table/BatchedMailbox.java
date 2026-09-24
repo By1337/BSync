@@ -13,8 +13,14 @@ public class BatchedMailbox {
 
     public BatchedMailbox(MailboxRepository mailbox, EventLoopWorker worker) {
         this.mailbox = mailbox;
-        removeBatcher = new DataBatcher<>(2048, mailbox::removeAll, worker);
-        addBatcher = new DataBatcher<>(2048, mailbox::putAll, worker);
+        var v = DataBatcher.createPair(
+                2048,
+                worker,
+                mailbox::putAll,
+                mailbox::removeAll
+        );
+        addBatcher = v.first();
+        removeBatcher = v.second();
     }
 
     public void addMail(MailboxRepository.Mail mail){

@@ -33,8 +33,14 @@ public class BatchedK2VCache<K, V> implements K2VTable<K, V> {
 
     public BatchedK2VCache(K2VTable<K, V> base, EventLoopWorker worker, Consumer<Caffeine<K, V>> c) {
         this.base = base;
-        addBatcher = new DataBatcher<>(4096, base::putAll, worker);
-        removeBatcher = new DataBatcher<>(4096, base::removeAll, worker);
+        var v = DataBatcher.<K2VPair<K, V>, K>createPair(
+                4096,
+                worker,
+                base::putAll,
+                base::removeAll
+        );
+        addBatcher = v.first();
+        removeBatcher = v.second();
         Caffeine<K, V> b = (Caffeine<K, V>) Caffeine.newBuilder();
         c.accept(b);
         cache = b.build();
