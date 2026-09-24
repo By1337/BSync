@@ -39,7 +39,6 @@ public class DedicatedServer {
     private final ChannelManager channelManager;
     private Thread terminalThread;
     private final DatabaseSource database;
-    private final boolean badShutdown;
     private final AddonLoader addonLoader;
 
     public DedicatedServer() {
@@ -47,20 +46,6 @@ public class DedicatedServer {
     }
 
     public DedicatedServer(int testPort) {
-        File lock = new File("./server.lock");
-        badShutdown = lock.exists();
-        if (badShutdown) {
-            log.warn("Unsafe shutdown detected!");
-            new File("./server.lock").delete();
-        }
-        try {
-            if (!new File("./server.lock").createNewFile()) {
-                throw new IOException("Failed to create server.lock!");
-            }
-        } catch (IOException e) {
-            new File("./server.lock").delete();
-            throw new RuntimeException("Failed to create lock file!", e);
-        }
         addonLoader = new AddonLoader(new File("./addons"), this);
         addonLoader.findAddons();
         config = Config.DECODER.decode(YamlMap.load(saveResourceToFile("config.yml")).get()).getOrThrow();
@@ -127,8 +112,6 @@ public class DedicatedServer {
         } catch (Exception e) {
             log.error("Failed to close database connection!", e);
         }
-        new File("./server.lock").delete();
-
         if (terminalThread != null) {
             terminalThread.interrupt();
         }
@@ -169,7 +152,7 @@ public class DedicatedServer {
     }
 
     public boolean badShutdown() {
-        return badShutdown;
+        return false;
     }
 
     public long uptimeMillis() {
