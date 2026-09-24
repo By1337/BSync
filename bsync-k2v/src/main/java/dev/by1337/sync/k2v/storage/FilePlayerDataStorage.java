@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public class FilePlayerDataStorage implements PlayerDataStorage {
@@ -129,6 +130,11 @@ public class FilePlayerDataStorage implements PlayerDataStorage {
     @Override
     public void pushSnapshot(UUID key, byte[] snapshot) {
         write(key, snapshot);
+    }
+
+    @Override
+    public CompletableFuture<byte @Nullable []> loadSnapshot(UUID key) {
+        return CompletableFuture.completedFuture(read(key));
     }
 
     @Override

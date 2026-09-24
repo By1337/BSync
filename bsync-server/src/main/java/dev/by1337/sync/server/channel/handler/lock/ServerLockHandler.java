@@ -9,6 +9,7 @@ import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CLockStatusAndBlobPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CSnapshotPacket;
 import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
@@ -154,6 +155,8 @@ public class ServerLockHandler implements ChannelHandler {
                                 )
                         );
                     }
+                } else if (payload instanceof C2SLoadSnapshotPacket r) {
+                    request.response(r, new S2CSnapshotPacket(safeOptional(() -> blobRepository.get(r.key()))));
                 } else {
                     ctx.fire(msg);
                 }

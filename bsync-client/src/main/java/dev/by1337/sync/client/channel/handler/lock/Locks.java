@@ -3,6 +3,7 @@ package dev.by1337.sync.client.channel.handler.lock;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public interface Locks {
@@ -11,6 +12,8 @@ public interface Locks {
     void pushMail(UUID key, String json);
 
     void pushSnapshot(UUID key, byte[] snapshot);
+
+    CompletableFuture<byte @Nullable []> loadSnapshot(UUID key);
 
     default void unlock(UUID key) {
         unlock(key, -1);

@@ -3,6 +3,7 @@ package dev.by1337.sync.k2v.storage;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public interface PlayerDataStorage {
@@ -17,6 +18,8 @@ public interface PlayerDataStorage {
     void pushMail(UUID key, String json);
 
     void pushSnapshot(UUID key, byte[] snapshot);
+
+    CompletableFuture<byte @Nullable []> loadSnapshot(UUID key);
 
     default void unlock(UUID key) {
         unlock(key, -1);

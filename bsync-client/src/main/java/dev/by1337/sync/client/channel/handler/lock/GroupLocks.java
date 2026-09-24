@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public class GroupLocks implements Locks {
@@ -30,6 +31,11 @@ public class GroupLocks implements Locks {
     @Override
     public void pushSnapshot(UUID key, byte[] snapshot) {
         group.route(key).pushSnapshot(key, snapshot);
+    }
+
+    @Override
+    public CompletableFuture<byte @Nullable []> loadSnapshot(UUID key) {
+        return group.route(key).loadSnapshot(key);
     }
 
     @Override

@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.LockSupport;
 
 public interface PlayerDataRepository<T> {
@@ -62,4 +63,6 @@ public interface PlayerDataRepository<T> {
     void pushMail(UUID key, String mail);
 
     void pushSnapshot(UUID key, T user);
+
+    CompletableFuture<@Nullable T> loadSnapshot(UUID key);
 }

@@ -6,6 +6,7 @@ import dev.by1337.sync.client.channel.handler.lock.Locks;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public class BSyncStorage implements PlayerDataStorage {
@@ -77,6 +78,11 @@ public class BSyncStorage implements PlayerDataStorage {
     @Override
     public void pushSnapshot(UUID key, byte[] snapshot) {
         locks.pushSnapshot(key, snapshot);
+    }
+
+    @Override
+    public CompletableFuture<byte @Nullable []> loadSnapshot(UUID key) {
+        return locks.loadSnapshot(key);
     }
 
     @Override

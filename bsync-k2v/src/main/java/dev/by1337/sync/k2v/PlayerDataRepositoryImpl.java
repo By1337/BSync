@@ -157,6 +157,12 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         }
     }
 
+    @Override
+    public CompletableFuture<@Nullable T> loadSnapshot(UUID key) {
+        return storage.loadSnapshot(key).thenApply(snapshot ->
+                snapshot == null ? null : dataManager.read(snapshot, key));
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
         var player = event.getPlayer();

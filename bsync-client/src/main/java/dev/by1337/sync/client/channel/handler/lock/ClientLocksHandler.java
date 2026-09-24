@@ -17,6 +17,8 @@ import org.slf4j.Logger;
 import javax.print.DocFlavor;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
@@ -196,6 +198,22 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 sendSnapshot(key, snapshot, lock.token, lock.snapshotVersion, 0);
             }, 100);
         });
+    }
+
+    @Override
+    public CompletableFuture<byte @Nullable []> loadSnapshot(UUID key) {
+        if (!ready || closing) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Lock channel is not ready"));
+        }
+        CompletableFuture<byte @Nullable []> result = new CompletableFuture<>();
+        new C2SLoadSnapshotPacket(key).request(pipeline, remote).then(response -> {
+            if (response == null) {
+                result.completeExceptionally(new TimeoutException("No snapshot response for " + key));
+            } else {
+                result.complete(response.snapshot());
+            }
+        });
+        return result;
     }
 
     private void sendSnapshot(UUID key, byte[] snapshot, int token, int version, int counter) {
