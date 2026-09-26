@@ -34,13 +34,17 @@ public interface Locks {
     }
 
     enum Type {
-        ALL(ChannelType.LOCKS),
-        ONLY_BLOBS(ChannelType.LOCKS_BLOBS_ONLY),
-        ONLY_MAILBOX(ChannelType.LOCKS_MAILBOX_ONLY);
+        ALL(ChannelType.LOCKS, true, true),
+        ONLY_BLOBS(ChannelType.LOCKS_BLOBS_ONLY, false, true),
+        ONLY_MAILBOX(ChannelType.LOCKS_MAILBOX_ONLY, true, false);
         public final String channelType;
+        public final boolean hasMailbox;
+        public final boolean hasBlobs;
 
-        Type(String channelType) {
+        Type(String channelType, boolean hasMailbox, boolean hasBlobs) {
             this.channelType = channelType;
+            this.hasMailbox = hasMailbox;
+            this.hasBlobs = hasBlobs;
         }
     }
 }

@@ -33,8 +33,13 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     private Pipeline pipeline;
     private boolean closing;
     private boolean ready;
+    private final Locks.Type type;
 
     private BSUtils.FaultIsolation<LockManager> lockManager;
+
+    public ClientLocksHandler(Type type1) {
+        this.type = type1;
+    }
 
     public void lockManager(LockManager lockManager) {
         this.lockManager = BSUtils.faultIsolation(lockManager);
@@ -155,6 +160,10 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     @Override
     public void pushMail(UUID key, String json) {
+        if (!type.hasMailbox){
+            log.error("mails is not supported! {} {}", key, json);
+            return;
+        }
         if (!ready) {
             log.error("Failed to push mail channel is not ready! {} {}", key, json);
             return;
@@ -273,6 +282,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     @Override
     public void loadMails(UUID key) {
         if (!ready) return;
+        if (!type.hasMailbox) return;
         eventLoop.execute(() -> {
             var lock = locks.get(key);
             if (lock == null || lock.isPending()) return;
