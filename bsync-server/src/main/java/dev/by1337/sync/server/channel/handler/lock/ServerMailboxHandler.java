@@ -3,10 +3,14 @@ package dev.by1337.sync.server.channel.handler.lock;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import dev.by1337.sync.common.channel.GetPostChannelHandler;
+import dev.by1337.sync.common.callback.ResponseFuture;
 import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
 import dev.by1337.sync.common.channel.pipeline.Connection;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.packet.impl.c2s.C2SMailResponsePacket;
+import dev.by1337.sync.common.packet.impl.c2s.C2SGiveMailUidsRequest;
+import dev.by1337.sync.common.packet.impl.a2a.A2ALongResponse;
+import dev.by1337.sync.common.packet.impl.a2a.A2AFlagResponse;
 import dev.by1337.sync.common.packet.impl.c2s.C2SPollAllMailsPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SPushMailPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
@@ -16,6 +20,8 @@ import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.ServerChannelRuntime;
 import dev.by1337.sync.server.database.table.BatchedMailbox;
 import dev.by1337.sync.server.database.table.MailboxRepository;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,8 +31,11 @@ import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ServerMailboxHandler extends GetPostChannelHandler implements MailboxHandler {
+    private static final AtomicLong MAIL_UIDS = new AtomicLong();
 
     private Logger log = DEFAULT_LOGGER;
     private ServerLockerHandler locks;
@@ -35,28 +44,38 @@ public class ServerMailboxHandler extends GetPostChannelHandler implements Mailb
     private boolean closing = false;
     private MailBox mailBox;
     private ServerChannelRuntime serverChannel;
+    private LongSet diffsA = new LongOpenHashSet();
+    private LongSet diffsB = new LongOpenHashSet();
+    private final long deliveryIdBase = ThreadLocalRandom.current().nextLong();
 
     public ServerMailboxHandler() {
+        registerGet(C2SGiveMailUidsRequest.class, msg -> new ResponseFuture<>(
+                new A2ALongResponse(MAIL_UIDS.getAndAdd(C2SGiveMailUidsRequest.RANGE_SIZE))));
         registerPost(C2SPollAllMailsPacket.class, (ctx, msg) -> {
             if (locks.isOwner(msg.key(), ctx.connection().transport(), msg.token())) {
                 sendMail(ctx.connection(), msg.key());
             }
         });
-        registerPost(C2SPushMailPacket.class, msg -> {
+        registerGet(C2SPushMailPacket.class, msg -> {
+            if (diffsA.contains(msg.uid()) || diffsB.contains(msg.uid()))
+                return new ResponseFuture<>(new A2AFlagResponse(true));
             UUID key = msg.key();
             var json = msg.json();
             MailboxRepository.Mail mail = new MailboxRepository.Mail(mailBox.nextMailId(), key, json);
             mailBox.addMail(mail);
+            diffsA.add(msg.uid());
             var lock = locks.getLock(key);
-            if (lock != null) {
-                sendMail(serverChannel.lookup(lock.owner), key);
-            }
+            if (lock != null) BSUtils.safe(() -> {
+                var connection = serverChannel.lookup(lock.owner);
+                if (connection != null) sendMail(connection, key);
+            });
+            return new ResponseFuture<>(new A2AFlagResponse(true));
         });
     }
 
     @Override
     public void pushMail(UUID key, String json) {
-        pipeline.execute(new C2SPushMailPacket(key, json), pipeline.local());
+        new C2SPushMailPacket(key, json, MAIL_UIDS.getAndIncrement()).request(pipeline);
     }
 
     @Override
@@ -75,6 +94,14 @@ public class ServerMailboxHandler extends GetPostChannelHandler implements Mailb
                 ),
                 DedicatedServer.IO_WORKERS.getNext()
         ));
+        eventLoop.repeat(this::rotateDiffs, 60_000 * 5, () -> closing);
+    }
+
+    private void rotateDiffs() {
+        var v = diffsB;
+        diffsB = diffsA;
+        diffsA = v;
+        v.clear();
     }
 
     @Override
@@ -91,13 +118,16 @@ public class ServerMailboxHandler extends GetPostChannelHandler implements Mailb
         var mail = mailBox.peekNextMail(key);
         if (mail == null) return;
         lock.isMailProcess = true;
-        new S2CMailAcceptPacket(key, mail.payload(), lock.token).request(pipeline, connection)
+        int deliveryToken = lock.token;
+        new S2CMailAcceptPacket(key, mail.payload(), deliveryToken, deliveryIdBase + mail.id()).request(pipeline, connection)
                 .then((result) -> {
                     lock.isMailProcess = false;
                     eventLoop.assertThread();
                     if (result instanceof C2SMailResponsePacket response) {
-                        if (!locks.isOwner(key, connection.transport(), response.token())) {
-                            log.error("Клиент {} принял mail без блокировки! {} {}", connection.transport(), mail, response);
+                        // The request was sent to this lock owner. A valid acceptance remains
+                        // valid after unlock/relock; otherwise an already processed mail survives.
+                        if (response.token() != deliveryToken) {
+                            log.error("Клиент {} подтвердил mail с неверным токеном! {} {}", connection.transport(), mail, response);
                             return;
                         }
                         if (response.isAccepted()) {

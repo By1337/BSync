@@ -29,14 +29,15 @@ public class PacketsTest {
         assertReadWrite(registries, new C2SMailResponsePacket(C2SMailResponsePacket.Status.ACCEPTED, 775));
         assertReadWrite(registries, new C2SOpenChannelPacket("id", ChannelType.LOCKS, new PacketRegistries.Snapshot(List.of())));
         assertReadWrite(registries, new C2SPollAllMailsPacket(UUID.randomUUID(), 775));
-        assertReadWrite(registries, new C2SPushMailPacket(UUID.randomUUID(), "json"));
+        assertReadWrite(registries, new C2SPushMailPacket(UUID.randomUUID(), "json", 123L));
+        assertReadWrite(registries, new C2SGiveMailUidsRequest());
         assertReadWrite(registries, new C2SRenewLockPacket(UUID.randomUUID(), 775));
         assertReadWrite(registries, new C2SUnlockAndFlushBlobPacket(UUID.randomUUID(), new byte[]{13, 37}, 775));
         assertReadWrite(registries, new C2SUnlockPacket(UUID.randomUUID(), 775));
         assertReadWrite(registries, new S2CChannelStatsPacket("id", true));
         assertReadWrite(registries, new S2CForceUnlockPacket(UUID.randomUUID(), 775));
         assertReadWrite(registries, new S2CLockStatusAndBlobPacket(S2CLockStatusAndBlobPacket.Status.ACCEPTED, new byte[]{13, 37}, 775, 665));
-        assertReadWrite(registries, new S2CMailAcceptPacket(UUID.randomUUID(), "json", 775));
+        assertReadWrite(registries, new S2CMailAcceptPacket(UUID.randomUUID(), "json", 775, 123L));
         assertReadWrite(registries, new S2CNoncePacket(new byte[]{13, 37}));
         assertReadWrite(registries, new S2CPostLoginPacket());
         //ChannelRegistryContext.onChannelOpen("id", registries);

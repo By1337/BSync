@@ -8,10 +8,10 @@ import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public record S2CMailAcceptPacket(UUID key, String json, int token) implements Packet, ExpectsResponse<C2SMailResponsePacket> {
+public record S2CMailAcceptPacket(UUID key, String json, int token, long uid) implements Packet, ExpectsResponse<C2SMailResponsePacket> {
 
     public S2CMailAcceptPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUUID(buf), ByteBufCodecs.readUtf8(buf), buf.readInt());
+        this(ByteBufCodecs.readUUID(buf), ByteBufCodecs.readUtf8(buf), buf.readInt(), buf.readLong());
     }
 
     @Override
@@ -19,6 +19,7 @@ public record S2CMailAcceptPacket(UUID key, String json, int token) implements P
         ByteBufCodecs.writeUUID(buf, key);
         ByteBufCodecs.writeUtf8(buf, json);
         buf.writeInt(token);
+        buf.writeLong(uid);
     }
 
 }
