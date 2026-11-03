@@ -21,10 +21,10 @@ class SqliteLeaseIntegrationTest {
     }
 
     private Handle open(SqlStorageConfig config) throws Exception {
-        var pool = SqlDataSources.create(config, config.poolSize, "sqlite-test");
         // Keep the SQLite busy timeout, but allow cold JDBC/native initialization
         // and pool scheduling to take longer than the 250 ms contention window.
-        pool.setConnectionTimeout(5_000);
+        // Hikari caches this timeout at startup, so configure it before creating the pool.
+        var pool = SqlDataSources.create(config, config.poolSize, "sqlite-test", 5_000);
         var database = new SqlLeaseRepository(pool, pool, config);
         try {
             database.initialize(true);
@@ -155,6 +155,32 @@ class SqliteLeaseIntegrationTest {
             var next = handle.database.claim(player, UUID.randomUUID());
             assertArrayEquals(new byte[]{ 7 }, next.data());
             assertFalse(handle.database.save(player, winner, epoch, new byte[]{ 9 }, false));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void poolWaitTimeoutIsIndependentOfSqliteBusyTimeout() throws Exception {
+        var executor = Executors.newSingleThreadExecutor();
+        try (var handle = open(config("pool-wait.db", "?timeout=250ms&pool=1"))) {
+            Future<Boolean> waiting;
+            try (var held = handle.pool.getConnection()) {
+                try (var query = held.createStatement(); var rows = query.executeQuery("PRAGMA busy_timeout")) {
+                    assertTrue(rows.next());
+                    assertEquals(250, rows.getInt(1));
+                }
+                var started = new CountDownLatch(1);
+                waiting = executor.submit(() -> {
+                    started.countDown();
+                    try (var connection = handle.pool.getConnection()) {
+                        return connection.isValid(1);
+                    }
+                });
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+                assertThrows(TimeoutException.class, () -> waiting.get(500, TimeUnit.MILLISECONDS));
+            }
+            assertTrue(waiting.get(5, TimeUnit.SECONDS));
         } finally {
             executor.shutdownNow();
         }

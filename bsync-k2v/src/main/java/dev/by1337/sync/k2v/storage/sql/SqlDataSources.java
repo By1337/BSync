@@ -16,6 +16,10 @@ final class SqlDataSources {
     }
 
     static HikariDataSource create(SqlStorageConfig config, int size, String name) {
+        return create(config, size, name, config.timeoutMillis);
+    }
+
+    static HikariDataSource create(SqlStorageConfig config, int size, String name, long connectionTimeoutMillis) {
         try {
             Driver driver = (Driver) Class.forName(config.driverClass(), true, SqlDataSources.class.getClassLoader())
                     .getConstructor().newInstance();
@@ -35,7 +39,7 @@ final class SqlDataSources {
                     config.isSqlite() ? Path.of(config.database).getParent() : null));
             pool.setMaximumPoolSize(size);
             pool.setMinimumIdle(0);
-            pool.setConnectionTimeout(config.timeoutMillis);
+            pool.setConnectionTimeout(connectionTimeoutMillis);
             pool.setValidationTimeout(Math.max(250, config.timeoutMillis));
             pool.setInitializationFailTimeout(-1);
             pool.setKeepaliveTime(0);
