@@ -1,8 +1,8 @@
 package dev.by1337.sync.k2v.storage.sql;
 
-import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
-import dev.by1337.sync.common.transfer.TransferEntry;
+import dev.by1337.sync.k2v.mail.Mail;
+import dev.by1337.sync.k2v.transfer.ExportPage;
+import dev.by1337.sync.k2v.transfer.TransferEntry;
 import javax.sql.DataSource;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -314,7 +314,7 @@ final class SqlLeaseRepository implements AutoCloseable {
         }
     }
 
-    S2CExportPagePacket exportData(UUID after) throws SQLException {
+    ExportPage exportData(UUID after) throws SQLException {
         var entries = new ArrayList<TransferEntry>();
         UUID cursor = after;
         int size = 0;
@@ -341,10 +341,10 @@ final class SqlLeaseRepository implements AutoCloseable {
                 }
             }
         }
-        return new S2CExportPagePacket(List.copyOf(entries), cursor, 0, !full && entries.size() < 256, "");
+        return new ExportPage(List.copyOf(entries), cursor, 0, !full && entries.size() < 256, "");
     }
 
-    S2CExportPagePacket exportMails(long after) throws SQLException {
+    ExportPage exportMails(long after) throws SQLException {
         var entries = new ArrayList<TransferEntry>();
         long cursor = after;
         int size = 0;
@@ -370,7 +370,7 @@ final class SqlLeaseRepository implements AutoCloseable {
                 }
             }
         }
-        return new S2CExportPagePacket(List.copyOf(entries), null, cursor, !full && entries.size() < 256, "");
+        return new ExportPage(List.copyOf(entries), null, cursor, !full && entries.size() < 256, "");
     }
 
     private PreparedStatement prepare(Connection connection, String sql) throws SQLException {

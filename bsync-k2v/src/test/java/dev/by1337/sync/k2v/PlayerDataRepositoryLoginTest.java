@@ -164,9 +164,9 @@ class PlayerDataRepositoryLoginTest {
         assertEquals("loaded", load(() -> true));
         var captor = org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);
         verify(storage).setMailHandler(captor.capture());
-        var callback = (java.util.function.Consumer<dev.by1337.sync.common.mail.Mail>) captor.getValue();
+        var callback = (java.util.function.Consumer<dev.by1337.sync.k2v.mail.Mail>) captor.getValue();
         var id = UUID.randomUUID();
-        var mail = new dev.by1337.sync.common.mail.Mail(id, key, "reward");
+        var mail = new dev.by1337.sync.k2v.mail.Mail(id, key, "reward");
         callback.accept(mail);
         verify(manager).acceptMail("loaded", "reward", key, id);
         doThrow(new IllegalStateException("temporary failure"))

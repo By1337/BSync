@@ -1,8 +1,8 @@
 package dev.by1337.sync.k2v.transfer;
 
-import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
-import dev.by1337.sync.common.transfer.*;
+import dev.by1337.sync.k2v.mail.Mail;
+import dev.by1337.sync.k2v.transfer.ExportPage;
+import dev.by1337.sync.k2v.transfer.*;
 import dev.by1337.sync.k2v.storage.FilePlayerDataStorage;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -93,8 +93,8 @@ class RepositoryTransferTest {
         TransferStorage broken = new TransferStorage() {
             public List<ExportSource> exportSources() {
                 return List.of(new ExportSource() {
-                    public CompletableFuture<S2CExportPagePacket> next(TransferEntry.Kind kind) {
-                        return CompletableFuture.completedFuture(S2CExportPagePacket.failed("database down"));
+                    public CompletableFuture<ExportPage> next(TransferEntry.Kind kind) {
+                        return CompletableFuture.completedFuture(ExportPage.failed("database down"));
                     }
 
                     public void close() {
@@ -161,11 +161,11 @@ class RepositoryTransferTest {
                 return List.of(new ExportSource() {
                     int page;
 
-                    public CompletableFuture<S2CExportPagePacket> next(TransferEntry.Kind kind) {
-                        if (kind == TransferEntry.Kind.MAIL) return CompletableFuture.completedFuture(S2CExportPagePacket.empty());
+                    public CompletableFuture<ExportPage> next(TransferEntry.Kind kind) {
+                        if (kind == TransferEntry.Kind.MAIL) return CompletableFuture.completedFuture(ExportPage.empty());
                         return CompletableFuture.completedFuture(page++ == 0
-                                ? new S2CExportPagePacket(List.of(), skipped, 0, false, "")
-                                : new S2CExportPagePacket(List.of(new TransferEntry(kind, matching, new byte[]{ 1 }, null)), matching, 0, true, ""));
+                                ? new ExportPage(List.of(), skipped, 0, false, "")
+                                : new ExportPage(List.of(new TransferEntry(kind, matching, new byte[]{ 1 }, null)), matching, 0, true, ""));
                     }
                 });
             }

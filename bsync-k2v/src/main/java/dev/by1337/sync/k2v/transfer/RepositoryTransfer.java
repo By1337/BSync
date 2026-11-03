@@ -1,7 +1,6 @@
 package dev.by1337.sync.k2v.transfer;
 
-import dev.by1337.sync.common.transfer.*;
-import dev.by1337.sync.common.work.EventLoopWorker;
+import dev.by1337.sync.k2v.transfer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +20,7 @@ public final class RepositoryTransfer {
     private static final int MAX_LINE = (TransferEntry.MAX_DATA_BYTES + 2) / 3 * 4 + 128;
     private static final ExecutorService FILES = Executors.newFixedThreadPool(2, task -> daemon(task, "bsync-transfer-file"));
     private static final ScheduledExecutorService RETRIES = Executors.newSingleThreadScheduledExecutor(task -> daemon(task, "bsync-transfer-retry"));
-    private static final EventLoopWorker PARALLEL = new EventLoopWorker("bsync-transfer-parallel");
+    private static final ExecutorService PARALLEL = Executors.newSingleThreadExecutor(task -> daemon(task, "bsync-transfer-parallel"));
 
     private RepositoryTransfer() {
     }
@@ -172,7 +171,7 @@ public final class RepositoryTransfer {
                 id = UUID.nameUUIDFromBytes(seed);
             }
         }
-        int max = section == TransferEntry.Kind.DATA ? TransferEntry.MAX_DATA_BYTES : dev.by1337.sync.common.mail.Mail.MAX_PAYLOAD_BYTES;
+        int max = section == TransferEntry.Kind.DATA ? TransferEntry.MAX_DATA_BYTES : dev.by1337.sync.k2v.mail.Mail.MAX_PAYLOAD_BYTES;
         if (body.length() > (max + 2) / 3 * 4) throw new IllegalArgumentException("Oversized Base64 record");
         byte[] bytes = Base64.getDecoder().decode(body);
         if (section == TransferEntry.Kind.MAIL && !Arrays.equals(bytes, new String(bytes, StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8)))

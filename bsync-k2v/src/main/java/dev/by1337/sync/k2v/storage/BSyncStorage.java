@@ -2,10 +2,11 @@ package dev.by1337.sync.k2v.storage;
 
 import dev.by1337.sync.client.channel.handler.lock.LockManager;
 import dev.by1337.sync.client.channel.handler.lock.Locks;
-import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.transfer.ExportSource;
-import dev.by1337.sync.common.transfer.TransferEntry;
-import dev.by1337.sync.common.transfer.TransferResult;
+import dev.by1337.sync.k2v.mail.Mail;
+import dev.by1337.sync.k2v.transfer.ExportSource;
+import dev.by1337.sync.k2v.transfer.ExportPage;
+import dev.by1337.sync.k2v.transfer.TransferEntry;
+import dev.by1337.sync.k2v.transfer.TransferResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -99,13 +100,29 @@ public class BSyncStorage implements PlayerDataStorage {
 
     @Override
     public List<ExportSource> exportSources() {
-        return locks.exportSources();
+        return locks.exportSources().stream().map(source -> (ExportSource) new ExportSource() {
+            @Override
+            public CompletableFuture<ExportPage> next(TransferEntry.Kind kind) {
+                return source.next(dev.by1337.sync.common.transfer.TransferEntry.Kind.valueOf(kind.name())).thenApply(page -> {
+                    var entries = page.entries().stream().map(entry -> new TransferEntry(
+                            TransferEntry.Kind.valueOf(entry.kind().name()), entry.key(), entry.payload(), entry.messageId())).toList();
+                    return new ExportPage(entries, page.afterKey(), page.afterSequence(), page.done(), page.error());
+                });
+            }
+
+            @Override
+            public void close() throws Exception {
+                source.close();
+            }
+        }).toList();
     }
 
     @Override
-    public CompletableFuture<TransferResult> importEntry(
-        TransferEntry entry) {
-        return locks.importEntry(entry);
+    public CompletableFuture<TransferResult> importEntry(TransferEntry entry) {
+        var request = new dev.by1337.sync.common.transfer.TransferEntry(
+                dev.by1337.sync.common.transfer.TransferEntry.Kind.valueOf(entry.kind().name()), entry.key(), entry.payload(), entry.messageId());
+        return locks.importEntry(request).thenApply(result -> new TransferResult(
+                TransferResult.Status.valueOf(result.status().name()), result.detail()));
     }
 
     @Override

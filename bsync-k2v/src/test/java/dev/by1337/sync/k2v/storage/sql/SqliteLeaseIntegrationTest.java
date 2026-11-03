@@ -1,8 +1,8 @@
 package dev.by1337.sync.k2v.storage.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
-import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.transfer.*;
+import dev.by1337.sync.k2v.mail.Mail;
+import dev.by1337.sync.k2v.transfer.*;
 import dev.by1337.sync.k2v.transfer.RepositoryTransfer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

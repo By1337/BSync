@@ -1,11 +1,11 @@
 package dev.by1337.sync.k2v.storage;
 
-import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.mail.MailJournal;
-import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
-import dev.by1337.sync.common.transfer.ExportSource;
-import dev.by1337.sync.common.transfer.TransferEntry;
-import dev.by1337.sync.common.transfer.TransferResult;
+import dev.by1337.sync.k2v.mail.Mail;
+import dev.by1337.sync.k2v.mail.MailJournal;
+import dev.by1337.sync.k2v.transfer.ExportPage;
+import dev.by1337.sync.k2v.transfer.ExportSource;
+import dev.by1337.sync.k2v.transfer.TransferEntry;
+import dev.by1337.sync.k2v.transfer.TransferResult;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -247,7 +247,7 @@ public class FilePlayerDataStorage implements PlayerDataStorage {
             private TransferEntry carry;
 
             @Override
-            public CompletableFuture<S2CExportPagePacket> next(
+            public CompletableFuture<ExportPage> next(
                 TransferEntry.Kind kind) {
                 try {
                     if (closed) throw new IllegalStateException("Storage is closed");
@@ -289,7 +289,7 @@ public class FilePlayerDataStorage implements PlayerDataStorage {
                         if (bytes >= TransferEntry.PAGE_BYTES) break;
                     }
                     boolean done = carry == null && !(kind == TransferEntry.Kind.DATA ? data.hasNext() : mails.hasNext());
-                    return CompletableFuture.completedFuture(new S2CExportPagePacket(
+                    return CompletableFuture.completedFuture(new ExportPage(
                             List.copyOf(entries), null, 0, done, ""));
                 } catch (Exception e) {
                     return CompletableFuture.failedFuture(e);

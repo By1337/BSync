@@ -1,7 +1,7 @@
 package dev.by1337.sync.k2v.storage;
 
-import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.transfer.TransferStorage;
+import dev.by1337.sync.k2v.mail.Mail;
+import dev.by1337.sync.k2v.transfer.TransferStorage;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;

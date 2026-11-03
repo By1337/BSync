@@ -1,6 +1,6 @@
 package dev.by1337.sync.k2v.storage.sql;
 
-import dev.by1337.sync.common.mail.MailJournal;
+import dev.by1337.sync.k2v.mail.MailJournal;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;

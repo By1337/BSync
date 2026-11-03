@@ -1,9 +1,9 @@
 package dev.by1337.sync.k2v.storage.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
-import dev.by1337.sync.common.mail.*;
-import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
-import dev.by1337.sync.common.transfer.*;
+import dev.by1337.sync.k2v.mail.*;
+import dev.by1337.sync.k2v.transfer.ExportPage;
+import dev.by1337.sync.k2v.transfer.*;
 import dev.by1337.sync.k2v.storage.PlayerDataStorage;
 import org.slf4j.*;
 
@@ -465,11 +465,11 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
             long sequence;
 
             @Override
-            public CompletableFuture<S2CExportPagePacket> next(TransferEntry.Kind kind) {
+            public CompletableFuture<ExportPage> next(TransferEntry.Kind kind) {
                 return supply(() -> {
                     requireReady();
-                    if ((kind == TransferEntry.Kind.DATA && !blobs) || (kind == TransferEntry.Kind.MAIL && !mailbox)) return S2CExportPagePacket.empty();
-                    S2CExportPagePacket page = kind == TransferEntry.Kind.DATA ? database.exportData(afterKey) : database.exportMails(sequence);
+                    if ((kind == TransferEntry.Kind.DATA && !blobs) || (kind == TransferEntry.Kind.MAIL && !mailbox)) return ExportPage.empty();
+                    ExportPage page = kind == TransferEntry.Kind.DATA ? database.exportData(afterKey) : database.exportMails(sequence);
                     afterKey = page.afterKey();
                     sequence = page.afterSequence();
                     return page;

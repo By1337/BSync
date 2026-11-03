@@ -103,7 +103,7 @@ class FilePlayerDataStorageTest {
         storage.close();
         storage = new FilePlayerDataStorage(directory.resolve("players").toFile());
         storage.setLockValidator(key -> true);
-        var received = new java.util.concurrent.atomic.AtomicReference<dev.by1337.sync.common.mail.Mail>();
+        var received = new java.util.concurrent.atomic.AtomicReference<dev.by1337.sync.k2v.mail.Mail>();
         storage.setMailHandler(received::set);
         storage.doMailsLoad(player);
         drainWorker();
