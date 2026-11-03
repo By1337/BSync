@@ -7,6 +7,10 @@ import dev.by1337.sync.client.channel.handler.pub.ClientPublisherHandler;
 import dev.by1337.sync.client.network.Connection;
 import dev.by1337.sync.common.channel.ChannelType;
 import dev.by1337.sync.common.packet.Packets;
+import dev.by1337.sync.common.transfer.ExportSource;
+import dev.by1337.sync.common.transfer.TransferStorage;
+import dev.by1337.sync.common.transfer.TransferEntry;
+import dev.by1337.sync.common.transfer.TransferResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -29,7 +33,7 @@ public class ChannelMaker {
                 type.channelType,
                 id,
                 cc -> {
-                    var locks = new ClientLocksHandler(type);
+                    var locks = new ClientLocksHandler(type, cc.mailboxDirectory());
                     locks.lockManager(manager);
                     cc.pipeline()
                             .addLast("locks", locks);
@@ -45,6 +49,18 @@ public class ChannelMaker {
                     @Override
                     public void pushMail(UUID key, String json) {
                         group.route(key).pushMail(key, json);
+                    }
+
+                    @Override
+                    public List<ExportSource> exportSources() {
+                        return TransferStorage.shardedExportSources(
+                                group.channels().stream().map(ChannelMaker.ChannelData::get).toList());
+                    }
+
+                    @Override
+                    public CompletableFuture<TransferResult> importEntry(
+                        TransferEntry entry) {
+                        return group.route(entry.key()).importEntry(entry);
                     }
 
                     @Override
@@ -90,7 +106,7 @@ public class ChannelMaker {
     public static ChannelData<Locks> createLocks(Connection c, String id, LockManager manager, Locks.Type type) {
 
         var v = c.addChannel(id, type.channelType, cc -> {
-            var locks = new ClientLocksHandler(type);
+            var locks = new ClientLocksHandler(type, cc.mailboxDirectory());
             locks.lockManager(manager);
             cc.pipeline()
                     .addLast("locks", locks);
@@ -126,12 +142,12 @@ public class ChannelMaker {
     }
 
     public static <T> ChannelMaker.ChannelData<T> create(
-            Function<String, Connection> byNameConnectionLookup,
-            Function<String, List<Connection>> byNameGroupLookup,
-            String path,
-            String type,
-            Function<ClientChannel, T> factory,
-            Function<ServerGroup<T>, T> routerFactory
+        Function<String, Connection> byNameConnectionLookup,
+        Function<String, List<Connection>> byNameGroupLookup,
+        String path,
+        String type,
+        Function<ClientChannel, T> factory,
+        Function<ServerGroup<T>, T> routerFactory
     ) {
         if (path.startsWith("server://")) {
             String[] args = path.substring("server://".length()).split("/");

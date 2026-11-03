@@ -8,7 +8,7 @@
     <name>BSync</name>
 
     <properties>
-        <revision>1.3.3</revision>
+        <revision>1.6</revision>
     </properties>
 
     <modules>

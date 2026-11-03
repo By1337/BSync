@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.PriorityQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
@@ -30,6 +32,33 @@ public final class EventLoopWorker {
             log.error("uncaught exception in worker {}", th.getName(), e);
         });
         this.thread.start();
+    }
+
+    /** Nonblocking admission for work which must explicitly retry on saturation. */
+    public boolean tryExecute(Runnable runnable) {
+        if (isWorkerThread()) {
+            runnable.run();
+            return true;
+        }
+        if (!queue.offer(runnable)) return false;
+        LockSupport.unpark(thread);
+        return true;
+    }
+
+    private static final ScheduledExecutorService RETRY_DISPATCH =
+            Executors.newSingleThreadScheduledExecutor(task -> {
+                Thread thread = new Thread(task, "bsync-reliable-dispatch");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    /** Always queues, including on this worker; retries saturation without blocking callers. */
+    public void executeReliably(Runnable runnable) {
+        if (queue.offer(runnable)) {
+            LockSupport.unpark(thread);
+        } else {
+            RETRY_DISPATCH.schedule(() -> executeReliably(runnable), 10, TimeUnit.MILLISECONDS);
+        }
     }
 
     public void execute(Runnable runnable) {

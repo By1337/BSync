@@ -97,6 +97,19 @@ public class BatchedK2VCache<K, V> implements K2VTable<K, V> {
         return cache.getIfPresent(key) != null || base.contains(key);
     }
 
+    /** Must run on the same IO worker as the batchers. */
+    public void flushPending() throws SQLException {
+        addBatcher.flushNow();
+        removeBatcher.flushNow();
+    }
+
+    /** Flush older queued writes before replacing a value, then update the read cache. */
+    public void putCommitted(K key, V value) throws SQLException {
+        flushPending();
+        base.put(key, value);
+        cache.put(key, value);
+    }
+
     @Override
     public void close() throws SQLException {
         addBatcher.close();

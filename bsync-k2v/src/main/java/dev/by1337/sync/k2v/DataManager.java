@@ -6,11 +6,17 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 public interface DataManager<T> {
-    @NotNull T read(byte @Nullable [] data, @NotNull UUID key);
+    @NotNull
+    T read(byte @Nullable [] data, @NotNull UUID key);
 
     byte @Nullable [] write(@NotNull T data, @NotNull UUID key);
 
     void acceptMail(@NotNull T data, @NotNull String mail, @NotNull UUID key);
+
+    /** A retry of the same message keeps messageId, including after server restart. */
+    default void acceptMail(@NotNull T data, @NotNull String mail, @NotNull UUID key, @NotNull UUID messageId) {
+        acceptMail(data, mail, key);
+    }
 
     void forceUnlock(UUID key);
 

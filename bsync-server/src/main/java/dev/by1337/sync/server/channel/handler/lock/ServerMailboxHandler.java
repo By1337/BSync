@@ -1,202 +1,205 @@
 package dev.by1337.sync.server.channel.handler.lock;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import dev.by1337.sync.common.channel.GetPostChannelHandler;
 import dev.by1337.sync.common.callback.ResponseFuture;
-import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
-import dev.by1337.sync.common.channel.pipeline.Connection;
-import dev.by1337.sync.common.channel.pipeline.Pipeline;
-import dev.by1337.sync.common.packet.impl.c2s.C2SMailResponsePacket;
-import dev.by1337.sync.common.packet.impl.c2s.C2SGiveMailUidsRequest;
-import dev.by1337.sync.common.packet.impl.a2a.A2ALongResponse;
+import dev.by1337.sync.common.channel.GetPostChannelHandler;
+import dev.by1337.sync.common.channel.pipeline.*;
+import dev.by1337.sync.common.mail.Mail;
+import dev.by1337.sync.common.mail.MailJournal;
 import dev.by1337.sync.common.packet.impl.a2a.A2AFlagResponse;
-import dev.by1337.sync.common.packet.impl.c2s.C2SPollAllMailsPacket;
-import dev.by1337.sync.common.packet.impl.c2s.C2SPushMailPacket;
+import dev.by1337.sync.common.packet.impl.c2s.*;
+import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
-import dev.by1337.sync.common.util.BSUtils;
+import dev.by1337.sync.common.transfer.TransferEntry;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.ServerChannelRuntime;
-import dev.by1337.sync.server.database.table.BatchedMailbox;
-import dev.by1337.sync.server.database.table.MailboxRepository;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
+import dev.by1337.sync.server.database.table.ReliableMailboxRepository;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.sql.SQLException;
-import java.time.Duration;
-import java.util.Comparator;
-import java.util.PriorityQueue;
-import java.util.Queue;
-import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class ServerMailboxHandler extends GetPostChannelHandler implements MailboxHandler {
-    private static final AtomicLong MAIL_UIDS = new AtomicLong();
-
+    private static final ScheduledExecutorService DISPATCH_RETRY =
+            Executors.newSingleThreadScheduledExecutor(task -> {
+                Thread thread = new Thread(task, "bsync-mailbox-dispatch");
+                thread.setDaemon(true);
+                return thread;
+            });
     private Logger log = DEFAULT_LOGGER;
     private ServerLockerHandler locks;
     private EventLoopWorker eventLoop;
+    private EventLoopWorker io;
     private Pipeline pipeline;
-    private boolean closing = false;
-    private MailBox mailBox;
+    private volatile boolean closing;
+    private ReliableMailboxRepository mailbox;
+    private MailJournal localOutbox;
     private ServerChannelRuntime serverChannel;
-    private LongSet diffsA = new LongOpenHashSet();
-    private LongSet diffsB = new LongOpenHashSet();
-    private final long deliveryIdBase = ThreadLocalRandom.current().nextLong();
+    private final Set<UUID> processing = new HashSet<>();
+    private final Set<UUID> localInFlight = new HashSet<>();
 
     public ServerMailboxHandler() {
-        registerGet(C2SGiveMailUidsRequest.class, msg -> new ResponseFuture<>(
-                new A2ALongResponse(MAIL_UIDS.getAndAdd(C2SGiveMailUidsRequest.RANGE_SIZE))));
-        registerPost(C2SPollAllMailsPacket.class, (ctx, msg) -> {
-            if (locks.isOwner(msg.key(), ctx.connection().transport(), msg.token())) {
-                sendMail(ctx.connection(), msg.key());
-            }
+        registerPost(C2SPollAllMailsPacket.class, (ctx, packet) -> {
+            if (locks.isOwner(packet.key(), ctx.connection().transport(), packet.token())) deliver(packet.key());
         });
-        registerGet(C2SPushMailPacket.class, msg -> {
-            if (diffsA.contains(msg.uid()) || diffsB.contains(msg.uid()))
-                return new ResponseFuture<>(new A2AFlagResponse(true));
-            UUID key = msg.key();
-            var json = msg.json();
-            MailboxRepository.Mail mail = new MailboxRepository.Mail(mailBox.nextMailId(), key, json);
-            mailBox.addMail(mail);
-            diffsA.add(msg.uid());
-            var lock = locks.getLock(key);
-            if (lock != null) BSUtils.safe(() -> {
-                var connection = serverChannel.lookup(lock.owner);
-                if (connection != null) sendMail(connection, key);
+        registerGet(C2SPushMailPacket.class, packet -> {
+            var response = new ResponseFuture<A2AFlagResponse>();
+            Mail mail = new Mail(packet.uid(), packet.key(), packet.json());
+            database(() -> mailbox.put(mail), accepted -> {
+                if (!Boolean.TRUE.equals(accepted))
+                    log.error("Mail admission failed id={} owner={}; producer must retain its outbox record", mail.id(), mail.owner());
+                response.complete(new A2AFlagResponse(Boolean.TRUE.equals(accepted)));
+                if (Boolean.TRUE.equals(accepted)) deliver(mail.owner());
             });
-            return new ResponseFuture<>(new A2AFlagResponse(true));
+            return response;
         });
-    }
-
-    @Override
-    public void pushMail(UUID key, String json) {
-        new C2SPushMailPacket(key, json, MAIL_UIDS.getAndIncrement()).request(pipeline);
     }
 
     @Override
     public void init(ChannelRuntime r) {
-        if (!(r instanceof ServerChannelRuntime runtime))
-            throw new IllegalArgumentException("runtime must be a ServerChannelRuntime");
+        if (!(r instanceof ServerChannelRuntime runtime)) throw new IllegalArgumentException("Expected server runtime");
         serverChannel = runtime;
         log = r.logger();
-        pipeline = runtime.pipeline();
+        pipeline = r.pipeline();
         eventLoop = r.eventLoop();
+        io = DedicatedServer.IO_WORKERS.getNext();
         locks = pipeline.get(ServerLockerHandler.class);
-        mailBox = new MailBox(new BatchedMailbox(
-                new MailboxRepository(
-                        runtime.server().database().dataSource(),
-                        runtime.channel().id() + "_mailbox_repository"
-                ),
-                DedicatedServer.IO_WORKERS.getNext()
-        ));
-        eventLoop.repeat(this::rotateDiffs, 60_000 * 5, () -> closing);
+        String identity = UUID.nameUUIDFromBytes(runtime.channel().id().getBytes(StandardCharsets.UTF_8)).toString().replace("-", "");
+        try {
+            mailbox = new ReliableMailboxRepository(runtime.server().database().dataSource(), "mailbox_" + identity);
+            mailbox.migrateLegacy(runtime.channel().id() + "_mailbox_repository");
+        } catch (SQLException e) {
+            throw new IllegalStateException("Cannot initialize durable mailbox", e);
+        }
+        localOutbox = new MailJournal(Path.of("bsync", "server-mail-outbox", identity));
+        log.info("Durable mailbox initialized table={} outbox={}", "mailbox_" + identity,
+                Path.of("bsync", "server-mail-outbox", identity));
+        eventLoop.repeat(this::retry, 1_000, () -> closing);
     }
 
-    private void rotateDiffs() {
-        var v = diffsB;
-        diffsB = diffsA;
-        diffsA = v;
-        v.clear();
+    @Override
+    public void pushMail(UUID key, String json) {
+        if (closing || localOutbox == null) throw new IllegalStateException("Mailbox not available");
+        localOutbox.append(key, json);
+        eventLoop.execute(this::retry);
+    }
+
+    ResponseFuture<S2CExportPagePacket> exportPage(C2SExportPagePacket request) {
+        var response = new ResponseFuture<S2CExportPagePacket>();
+        database(() -> mailbox.exportPage(request.afterSequence(), request.shard()::includes), page -> {
+            if (page == null) {
+                response.complete(S2CExportPagePacket.failed("Mailbox SQL export failed"));
+                return;
+            }
+            var entries = page.entries().stream().map(mail -> new TransferEntry(
+                    TransferEntry.Kind.MAIL, mail.owner(),
+                    mail.payload().getBytes(StandardCharsets.UTF_8), mail.id())).toList();
+            response.complete(new S2CExportPagePacket(entries, null,
+                    page.afterSequence(), page.done(), ""));
+        });
+        return response;
+    }
+
+    private void retry() {
+        if (closing) return;
+        for (UUID key : locks.lockedKeys()) deliver(key);
+        for (Mail mail : localOutbox.pending()) {
+            if (localInFlight.size() >= 32) break;
+            if (!localInFlight.add(mail.id())) continue;
+            database(() -> mailbox.put(mail), accepted -> {
+                localInFlight.remove(mail.id());
+                if (Boolean.TRUE.equals(accepted)) {
+                    try {
+                        localOutbox.acknowledge(mail.id());
+                    } catch (RuntimeException e) {
+                        log.error("Cannot acknowledge local mail outbox id={}", mail.id(), e);
+                    }
+                    deliver(mail.owner());
+                } else log.error("Local mail admission failed id={} owner={}; retained on disk", mail.id(), mail.owner());
+            });
+        }
+    }
+
+    private void deliver(UUID key) {
+        if (closing) return;
+        var lock = locks.getLock(key);
+        if (lock == null || lock.importing || !processing.add(key)) return;
+        Connection connection = serverChannel.lookup(lock.owner);
+        if (connection == null) {
+            processing.remove(key);
+            return;
+        }
+        int token = lock.token;
+        database(() -> mailbox.next(key), pending -> {
+            var current = locks.getLock(key);
+            if (pending == null || current != lock || pending.retryAt() > System.currentTimeMillis()) {
+                processing.remove(key);
+                return;
+            }
+            Mail mail = pending.mail();
+            new S2CMailAcceptPacket(key, mail.payload(), token, mail.id()).request(pipeline, connection)
+                    .then(response -> {
+                        if (response != null && response.token() == token && response.isAccepted()) {
+                            // Acceptance is for this delivery, even if the player has since moved.
+                            database(() -> {
+                                mailbox.acknowledge(mail.id());
+                                return true;
+                            }, committed -> {
+                                processing.remove(key);
+                                if (Boolean.TRUE.equals(committed)) deliver(key);
+                            });
+                        } else {
+                            long delay = Math.min(60_000L, 1_000L << (int) Math.min(pending.attempts() + 1, 6));
+                            String error = response == null ? "No delivery ACK" : "Rejected delivery: " + response;
+                            log.error("Mail delivery failed id={} owner={} attempts={} retryInMs={} reason={}",
+                                    mail.id(), key, pending.attempts() + 1, delay, error);
+                            database(() -> {
+                                mailbox.failed(mail.id(), error, System.currentTimeMillis() + delay);
+                                return true;
+                            }, ignored -> processing.remove(key));
+                        }
+                    });
+        });
+    }
+
+    private <T> void database(SqlTask<T> task, Consumer<T> done) {
+        dispatch(io, () -> {
+            T result = null;
+            try {
+                result = task.run();
+            } catch (Exception e) {
+                log.error("Mailbox database operation failed; records remain pending", e);
+            }
+            T value = result;
+            dispatch(eventLoop, () -> {
+                if (!closing) done.accept(value);
+            });
+        });
+    }
+
+    private void dispatch(EventLoopWorker worker, Runnable task) {
+        if (closing) return;
+        if (!worker.tryExecute(task)) {
+            log.warn("Mailbox worker {} is saturated; rescheduling instead of dropping work", worker.name());
+            DISPATCH_RETRY.schedule(() -> dispatch(worker, task), 100, TimeUnit.MILLISECONDS);
+        }
     }
 
     @Override
     public void close() {
         closing = true;
-        BSUtils.safe(mailBox::close);
+        if (localOutbox != null) localOutbox.close();
+        // All admissions were committed before ACK. Unacknowledged deliveries stay in SQL.
     }
 
-    private void sendMail(Connection connection, UUID key) {
-        eventLoop.assertThread();
-        var lock = locks.getLock(key);
-        if (lock == null || lock.owner != connection.transport()) return;
-        if (lock.isMailProcess) return;
-        var mail = mailBox.peekNextMail(key);
-        if (mail == null) return;
-        lock.isMailProcess = true;
-        int deliveryToken = lock.token;
-        new S2CMailAcceptPacket(key, mail.payload(), deliveryToken, deliveryIdBase + mail.id()).request(pipeline, connection)
-                .then((result) -> {
-                    lock.isMailProcess = false;
-                    eventLoop.assertThread();
-                    if (result instanceof C2SMailResponsePacket response) {
-                        // The request was sent to this lock owner. A valid acceptance remains
-                        // valid after unlock/relock; otherwise an already processed mail survives.
-                        if (response.token() != deliveryToken) {
-                            log.error("Клиент {} подтвердил mail с неверным токеном! {} {}", connection.transport(), mail, response);
-                            return;
-                        }
-                        if (response.isAccepted()) {
-                            mailBox.removeMail(mail);
-                            sendMail(connection, key);
-                        }
-                    } else {
-                        log.error("Client {} не ответил на S2CMailAcceptPacket {}", connection, result);
-                    }
-                });
-    }
-
-    private static class MailBox {
-        private static final Logger log = LoggerFactory.getLogger(MailBox.class);
-        private int mailIds = 0;
-        private final BatchedMailbox mailbox;
-        private final Cache<UUID, Queue<MailboxRepository.Mail>> loaded_mails;
-
-        private MailBox(BatchedMailbox mailbox) {
-            this.mailbox = mailbox;
-            try {
-                mailIds = mailbox.getMaxId();
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-            loaded_mails = Caffeine.newBuilder()
-                    .maximumSize(2048)
-                    .expireAfterAccess(Duration.ofMinutes(30))
-                    .build()
-            ;
-        }
-
-        public int nextMailId() {
-            return ++mailIds;
-        }
-
-        public MailboxRepository.Mail peekNextMail(UUID uuid) {
-            return getMailQueue(uuid).peek();
-        }
-
-        public Queue<MailboxRepository.Mail> getMailQueue(UUID uuid) {
-            return loaded_mails.get(uuid, k -> {
-                try {
-                    var list = mailbox.loadAll(uuid);
-                    PriorityQueue<MailboxRepository.Mail> queue = new PriorityQueue<>(Comparator.comparingInt(MailboxRepository.Mail::id));
-                    queue.addAll(list);
-                    return queue;
-                } catch (SQLException e) {
-                    log.error("Failed to load mails for {}", uuid);
-                    return new PriorityQueue<>();
-                }
-            });
-        }
-
-        public void removeMail(MailboxRepository.Mail mail) {
-            mailbox.removeMail(mail);
-            var v = loaded_mails.getIfPresent(mail.owner());
-            if (v != null) {
-                v.remove(mail);
-            }
-        }
-
-        public void addMail(MailboxRepository.Mail mail) {
-            getMailQueue(mail.owner()).offer(mail);
-            mailbox.addMail(mail);
-        }
-
-        public void close() {
-            BSUtils.safe(mailbox::close);
-        }
+    @FunctionalInterface
+    private interface SqlTask<T> {
+        T run() throws Exception;
     }
 }

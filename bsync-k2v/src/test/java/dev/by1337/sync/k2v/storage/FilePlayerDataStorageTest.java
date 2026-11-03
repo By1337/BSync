@@ -1,6 +1,7 @@
 package dev.by1337.sync.k2v.storage;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
@@ -11,7 +12,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FilePlayerDataStorageTest {
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
     private FilePlayerDataStorage storage;
     private final UUID player = new UUID(Long.MIN_VALUE, 37);
     private final UUID other = new UUID(13, 42);
@@ -19,6 +21,11 @@ class FilePlayerDataStorageTest {
     @BeforeEach
     void setUp() {
         storage = new FilePlayerDataStorage(directory.resolve("players").toFile());
+    }
+
+    @AfterEach
+    void closeStorage() {
+        storage.close();
     }
 
     @Test
@@ -34,20 +41,22 @@ class FilePlayerDataStorageTest {
 
     @Test
     void overwritesSnapshotAndPersistsAcrossStorageInstances() {
-        storage.pushSnapshot(player, new byte[]{13, 37});
-        storage.pushSnapshot(other, new byte[]{42});
-        storage.pushSnapshot(player, new byte[]{0, -1, 7});
-        FilePlayerDataStorage reopened = new FilePlayerDataStorage(directory.resolve("players").toFile());
-        assertArrayEquals(new byte[]{0, -1, 7}, reopened.loadSnapshot(player).join());
-        assertArrayEquals(new byte[]{42}, reopened.loadSnapshot(other).join());
+        storage.pushSnapshot(player, new byte[]{ 13, 37 });
+        storage.pushSnapshot(other, new byte[]{ 42 });
+        storage.pushSnapshot(player, new byte[]{ 0, -1, 7 });
+        storage.close();
+        storage = new FilePlayerDataStorage(directory.resolve("players").toFile());
+        FilePlayerDataStorage reopened = storage;
+        assertArrayEquals(new byte[]{ 0, -1, 7 }, reopened.loadSnapshot(player).join());
+        assertArrayEquals(new byte[]{ 42 }, reopened.loadSnapshot(other).join());
         assertFalse(Files.exists(directory.resolve("players/" + player + ".dat.tmp")));
     }
 
     @Test
     void nullSnapshotLeavesStoredValueAndEmptySnapshotIsPreserved() {
-        storage.pushSnapshot(player, new byte[]{13});
+        storage.pushSnapshot(player, new byte[]{ 13 });
         storage.pushSnapshot(player, null);
-        assertArrayEquals(new byte[]{13}, storage.loadSnapshot(player).join());
+        assertArrayEquals(new byte[]{ 13 }, storage.loadSnapshot(player).join());
         storage.pushSnapshot(player, new byte[0]);
         assertArrayEquals(new byte[0], storage.loadSnapshot(player).join());
     }
@@ -64,8 +73,9 @@ class FilePlayerDataStorageTest {
     }
 
     @Test
-    void mailLoaderDeliversOwnerAndDoesNotRedeliverConsumedMail() {
-        List<String> delivered = new ArrayList<>();
+    void mailLoaderDeliversOwnerAndDoesNotRedeliverConsumedMail() throws Exception {
+        List<String> delivered = new java.util.concurrent.CopyOnWriteArrayList<>();
+        storage.setLockValidator(key -> true);
         storage.setMailAccept((owner, mail) -> {
             assertEquals(player, owner);
             delivered.add(mail);
@@ -74,6 +84,49 @@ class FilePlayerDataStorageTest {
         storage.pushMail(player, "second");
         storage.doMailsLoad(player);
         storage.doMailsLoad(player);
+        drainWorker();
         assertEquals(List.of("first", "second"), delivered);
     }
+
+    @Test
+    void failedHandlerRetainsMessageAcrossRestartWithSameId() throws Exception {
+        var failed = new java.util.concurrent.atomic.AtomicReference<java.util.UUID>();
+        storage.setLockValidator(key -> true);
+        storage.setMailHandler(mail -> {
+            failed.set(mail.id());
+            throw new IllegalStateException("temporary handler failure");
+        });
+        storage.pushMail(player, "reward");
+        storage.doMailsLoad(player);
+        drainWorker();
+        assertNotNull(failed.get());
+        storage.close();
+        storage = new FilePlayerDataStorage(directory.resolve("players").toFile());
+        storage.setLockValidator(key -> true);
+        var received = new java.util.concurrent.atomic.AtomicReference<dev.by1337.sync.common.mail.Mail>();
+        storage.setMailHandler(received::set);
+        storage.doMailsLoad(player);
+        drainWorker();
+        assertEquals(failed.get(), received.get().id());
+        assertEquals("reward", received.get().payload());
+        assertTrue(storage.readAllMailsAndDelete(player).isEmpty());
+    }
+
+    @Test
+    void migratesLegacyMailboxFileBeforeDeletingIt() throws Exception {
+        storage.close();
+        var legacy = directory.resolve("players/" + player + ".mailbox");
+        Files.writeString(legacy, "first\nline one\\nline two\n");
+        storage = new FilePlayerDataStorage(directory.resolve("players").toFile());
+        assertFalse(Files.exists(legacy));
+        assertEquals(List.of("first", "line one\nline two"), storage.readAllMailsAndDelete(player));
+    }
+
+    private void drainWorker() throws Exception {
+        var field = FilePlayerDataStorage.class.getDeclaredField("mailWorker");
+        field.setAccessible(true);
+        ((java.util.concurrent.ExecutorService) field.get(storage)).submit(() -> {
+        }).get(5, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
 }

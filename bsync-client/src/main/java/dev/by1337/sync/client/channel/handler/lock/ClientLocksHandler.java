@@ -6,17 +6,24 @@ import dev.by1337.sync.client.channel.status.ChannelInactiveMessage;
 import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.request.IncomingRequest;
 import dev.by1337.sync.common.channel.pipeline.*;
+import dev.by1337.sync.common.mail.Mail;
+import dev.by1337.sync.common.mail.MailJournal;
 import dev.by1337.sync.common.packet.impl.c2s.*;
+import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CMailAcceptPacket;
+import dev.by1337.sync.common.transfer.ExportSource;
+import dev.by1337.sync.common.transfer.TransferEntry;
+import dev.by1337.sync.common.transfer.ShardSelection;
+import dev.by1337.sync.common.transfer.TransferResult;
 import dev.by1337.sync.common.util.BSUtils;
 import dev.by1337.sync.common.work.EventLoopWorker;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,32 +34,35 @@ import java.util.function.BiConsumer;
 public final class ClientLocksHandler implements ChannelHandler, Locks {
     public static final int MAX_BLOB_SIZE = (16 << 20) - 128;
     private static final long MAIL_REQUEST_TIMEOUT = 5_000;
-    private static final long MAIL_RETRY_DELAY = 2_000;
-    private static final int MAIL_MAX_RETRIES = 10;
-    private static final long MAIL_RETRY_TTL_NANOS = 120_000_000_000L;
+    private final MailJournal outbox;
+    private final Map<UUID, Object> inFlightMails = new HashMap<>();
+    private final Map<UUID, Integer> mailFailures = new HashMap<>();
+    private final Map<UUID, Long> nextMailAttempt = new HashMap<>();
     private final AtomicInteger counter = new AtomicInteger();
     private Logger log = DEFAULT_LOGGER;
-    private EventLoopWorker eventLoop;
+    private volatile EventLoopWorker eventLoop;
     private final Map<UUID, LockData> locks = new ConcurrentHashMap<>();
     private final Map<UUID, byte @NotNull []> recovery = new HashMap<>(256);
     private Connection remote;
     private Pipeline pipeline;
-    private boolean closing;
+    private volatile boolean closing;
     private boolean ready;
-    private LongSet mailsA = new LongOpenHashSet();
-    private LongSet mailsB = new LongOpenHashSet();
-    private final Queue<PendingMail> pendingMails = new ArrayDeque<>();
-    private long nextMailUid;
-    private int remainingMailUids;
-    private boolean requestingMailUids;
+    private Set<UUID> mailsA = new HashSet<>();
+    private Set<UUID> mailsB = new HashSet<>();
     private boolean mailboxActive;
-    private int mailSession;
     private final Locks.Type type;
 
     private BSUtils.FaultIsolation<LockManager> lockManager;
 
+    /** Low-level in-memory transport; use ChannelMaker for a persistent production outbox. */
+    @Deprecated
     public ClientLocksHandler(Type type1) {
-        this.type = type1;
+        this(type1, null);
+    }
+
+    public ClientLocksHandler(Type type, Path journalDirectory) {
+        this.type = type;
+        this.outbox = new MailJournal(journalDirectory);
     }
 
     public void lockManager(LockManager lockManager) {
@@ -61,6 +71,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     @Override
     public void init(ChannelRuntime runtime) {
+        if (closing) throw new IllegalStateException("Mailbox is closed");
         if (!(runtime instanceof ClientChannelRuntime ccr)) throw new IllegalArgumentException("Invalid runtime type");
         if (this.eventLoop != null) {
             throw new IllegalStateException("Duplicate handler add!");
@@ -72,6 +83,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
         eventLoop.schedule(this::tick, 3_000);
         eventLoop.repeat(this::rotateDiffs, 60_000 * 5, () -> closing);
         ready = true;
+        eventLoop.repeat(this::flushPendingMails, 1_000, () -> closing);
     }
 
     private void rotateDiffs() {
@@ -127,15 +139,22 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                     r.response(mail, C2SMailResponsePacket.reject(-1));
                     return; //outdated
                 }
-                r.response(mail, C2SMailResponsePacket.accepted(lock.token));
-                if (mailsA.contains(mail.uid()) || mailsB.contains(mail.uid())) return;
-                mailsA.add(mail.uid());
-                lockManager.run(v -> v.acceptMail(mail.key(), mail.json()));
+                if (mailsA.contains(mail.uid()) || mailsB.contains(mail.uid())) {
+                    r.response(mail, C2SMailResponsePacket.accepted(lock.token));
+                    return;
+                }
+                if (lockManager.run(v -> v.acceptMail(mail.key(), mail.json(), mail.uid()))) {
+                    mailsA.add(mail.uid());
+                    r.response(mail, C2SMailResponsePacket.accepted(lock.token));
+                } else {
+                    log.error("Mail handler failed id={} owner={}; retaining for retry", mail.uid(), mail.key());
+                    r.response(mail, C2SMailResponsePacket.reject(lock.token));
+                }
             }
         } else {
             if (msg instanceof ChannelActiveMessage) {
                 mailboxActive = true;
-                if (type.hasMailbox) requestMailUids(0);
+                flushPendingMails();
                 if (!recovery.isEmpty()) {
                     log.warn("Trying to recovery locks! {}", recovery.size());
                     for (Map.Entry<UUID, byte[]> entry : recovery.entrySet()) {
@@ -155,10 +174,9 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 }
             } else if (msg instanceof ChannelInactiveMessage) {
                 mailboxActive = false;
-                mailSession++;
-                remainingMailUids = 0;
-                requestingMailUids = false;
-                discardPendingMails();
+                // Requests in flight may already have committed. Retain their IDs and
+                // retry after reconnect; a durable server receipt suppresses duplicates.
+                inFlightMails.clear();
                 if (!locks.isEmpty()) log.error("Connection lost but has locks!");
                 for (LockData value : List.copyOf(locks.values())) {
                     lockManager.run(v -> v.forceUnlock(value.key));
@@ -173,11 +191,12 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     @Override
     public void close() {
-        eventLoop.assertThread();
+        if (eventLoop != null) eventLoop.assertThread();
+        if (closing) return;
         closing = true;
         mailboxActive = false;
-        mailSession++;
-        discardPendingMails();
+        inFlightMails.clear();
+        outbox.close();
         for (var lock : List.copyOf(locks.entrySet())) {
             try {
                 var data = lock.getValue();
@@ -188,101 +207,131 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 log.error("Failed to flush data for {}", lock, e);
             }
         }
-        lockManager.run(LockManager::close);
+        if (lockManager != null) lockManager.run(LockManager::close);
         recovery.clear();
     }
 
     @Override
     public void pushMail(UUID key, String json) {
-        if (!type.hasMailbox){
-            log.error("mails is not supported! {} {}", key, json);
-            return;
-        }
-        if (!ready || closing) {
-            log.error("Failed to push mail channel is not ready! {} {}", key, json);
-            return;
-        }
-        eventLoop.execute(() -> {
-            if (closing) return;
-            if (!isLocked(key)) {
-                if (mailboxActive && remainingMailUids > 0) {
-                    sendNewMail(key, json);
-                } else {
-                    pendingMails.offer(new PendingMail(key, json));
-                    flushPendingMails();
-                }
-            } else {
-                lockManager.run(v -> v.acceptMail(key, json));
-            }
-        });
+        if (!type.hasMailbox) throw new IllegalStateException("Mailbox is not enabled for this channel");
+        if (closing) throw new IllegalStateException("Mailbox is closed");
+        // Persist in the caller before returning, including when disconnected or before init.
+        outbox.append(key, json);
+        if (eventLoop != null) eventLoop.execute(this::flushPendingMails);
     }
 
     private void flushPendingMails() {
         if (closing || !mailboxActive) return;
-        while (remainingMailUids > 0 && !pendingMails.isEmpty()) {
-            var mail = pendingMails.remove();
-            sendNewMail(mail.key(), mail.json());
+        Set<UUID> owners = new HashSet<>();
+        long now = System.nanoTime();
+        for (Mail mail : outbox.pending()) {
+            if (!owners.add(mail.owner())) continue; // preserve producer order per player
+            if (inFlightMails.size() >= 32) return;
+            if (inFlightMails.containsKey(mail.id()) || nextMailAttempt.getOrDefault(mail.id(), 0L) > now) continue;
+            Object attempt = new Object();
+            inFlightMails.put(mail.id(), attempt);
+            new C2SPushMailPacket(mail.owner(), mail.payload(), mail.id())
+                    .request(pipeline, remote, MAIL_REQUEST_TIMEOUT).then(response -> {
+                        if (!inFlightMails.remove(mail.id(), attempt)) return;
+                        if (closing) return; // the persisted record is replayed on reopening
+                        if (response != null && response.flag()) {
+                            try {
+                                outbox.acknowledge(mail.id());
+                                mailFailures.remove(mail.id());
+                                nextMailAttempt.remove(mail.id());
+                                eventLoop.schedule(this::flushPendingMails);
+                            } catch (RuntimeException e) {
+                                log.error("Cannot remove confirmed mail from outbox id={} owner={}", mail.id(), mail.owner(), e);
+                            }
+                        } else {
+                            int attempts = mailFailures.merge(mail.id(), 1, Integer::sum);
+                            long delay = Math.min(60_000L, 1_000L << Math.min(attempts, 6));
+                            nextMailAttempt.put(mail.id(), System.nanoTime() + delay * 1_000_000L);
+                            if (attempts == 1 || attempts % 10 == 0)
+                                log.error("Mail not confirmed id={} owner={} attempts={} retryInMs={}; retained on disk",
+                                        mail.id(), mail.owner(), attempts, delay);
+                        }
+                    });
         }
-        if (!pendingMails.isEmpty()) requestMailUids(0);
     }
 
-    private void sendNewMail(UUID key, String json) {
-        remainingMailUids--;
-        var packet = new C2SPushMailPacket(key, json, nextMailUid++);
-        sendMail(packet, 0, mailSession, System.nanoTime() + MAIL_RETRY_TTL_NANOS);
+    @Override
+    public List<ExportSource> exportSources() {
+        return exportSources(ShardSelection.ALL);
     }
 
-    private void requestMailUids(int retries) {
-        if (closing || !mailboxActive || requestingMailUids) return;
-        requestingMailUids = true;
-        int session = mailSession;
-        new C2SGiveMailUidsRequest().request(pipeline, remote, MAIL_REQUEST_TIMEOUT).then(response -> {
-            if (closing || session != mailSession || !mailboxActive) return;
-            if (response == null) {
-                if (retries >= MAIL_MAX_RETRIES) {
-                    requestingMailUids = false;
-                    log.error("Failed to obtain mailbox ID range after {} attempts", retries + 1);
-                    discardPendingMails();
-                } else {
-                    eventLoop.schedule(() -> {
-                        if (closing || session != mailSession || !mailboxActive) return;
-                        requestingMailUids = false;
-                        requestMailUids(retries + 1);
-                    }, MAIL_RETRY_DELAY);
+    @Override
+    public List<ExportSource> exportSources(ShardSelection shard) {
+        Objects.requireNonNull(shard);
+        return List.of(new ExportSource() {
+            private UUID afterKey;
+            private long afterSequence;
+
+            @Override
+            public CompletableFuture<S2CExportPagePacket> next(
+                TransferEntry.Kind kind) {
+                if ((kind == TransferEntry.Kind.DATA && !type.hasBlobs)
+                        || (kind == TransferEntry.Kind.MAIL && !type.hasMailbox))
+                    return CompletableFuture.completedFuture(S2CExportPagePacket.empty());
+                var result = new CompletableFuture<S2CExportPagePacket>();
+                if (eventLoop == null || closing) return CompletableFuture.failedFuture(new IllegalStateException("Channel not initialized"));
+                eventLoop.executeReliably(() -> {
+                    if (closing || !mailboxActive) {
+                        result.completeExceptionally(new IllegalStateException("Channel is disconnected"));
+                        return;
+                    }
+                    new C2SExportPagePacket(kind, afterKey, afterSequence, shard.count(), shard.index()).request(pipeline, remote, 30_000).then(page -> {
+                        if (page == null) {
+                            result.completeExceptionally(new TimeoutException("Export page was not confirmed"));
+                        } else if (!page.error().isEmpty()) {
+                            result.completeExceptionally(new IllegalStateException(page.error()));
+                        } else {
+                            afterKey = page.afterKey();
+                            afterSequence = page.afterSequence();
+                            result.complete(page);
+                        }
+                    });
+                });
+                return result;
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<TransferResult> importEntry(
+        TransferEntry entry) {
+        var result = new CompletableFuture<TransferResult>();
+        if (eventLoop == null || closing) return CompletableFuture.failedFuture(new IllegalStateException("Channel not initialized"));
+        eventLoop.executeReliably(() -> {
+            if (closing || !mailboxActive) {
+                result.completeExceptionally(new IllegalStateException("Channel is disconnected"));
+            } else if (entry.kind() == TransferEntry.Kind.DATA) {
+                if (!type.hasBlobs) {
+                    result.complete(new TransferResult(
+                            TransferResult.Status.UNSUPPORTED, "Channel has no blob storage"));
+                    return;
                 }
-                return;
+                new C2SImportDataPacket(entry.key(), entry.payload()).request(pipeline, remote, 30_000).then(response -> {
+                    if (response == null) result.completeExceptionally(new TimeoutException("No snapshot import response"));
+                    else result.complete(new TransferResult(response.status(), response.detail()));
+                });
+            } else {
+                if (!type.hasMailbox) {
+                    result.complete(new TransferResult(
+                            TransferResult.Status.UNSUPPORTED, "Channel has no mailbox"));
+                    return;
+                }
+                String payload = new String(entry.payload(), StandardCharsets.UTF_8);
+                new C2SPushMailPacket(entry.key(), payload, entry.messageId()).request(pipeline, remote, 30_000).then(response -> {
+                    if (response == null) result.completeExceptionally(new TimeoutException("No mail import response"));
+                    else result.complete(new TransferResult(response.flag()
+                            ? TransferResult.Status.SUCCESS
+                            : TransferResult.Status.FAILED, response.flag() ? "" : "Mail SQL admission failed"));
+                });
             }
-            requestingMailUids = false;
-            nextMailUid = response.value();
-            remainingMailUids = C2SGiveMailUidsRequest.RANGE_SIZE;
-            flushPendingMails();
         });
+        return result;
     }
-
-    private void sendMail(C2SPushMailPacket packet, int retries, int session, long deadline) {
-        if (closing || session != mailSession || !mailboxActive || System.nanoTime() >= deadline) {
-            log.error("Mail push was not confirmed: {}", packet);
-            return;
-        }
-        packet.request(pipeline, remote, MAIL_REQUEST_TIMEOUT).then(response -> {
-            if (response != null && response.flag()) return;
-            if (closing || session != mailSession || !mailboxActive
-                    || retries >= MAIL_MAX_RETRIES || System.nanoTime() >= deadline) {
-                log.error("Failed to confirm mail push after {} attempts: {}", retries + 1, packet);
-                return;
-            }
-            eventLoop.schedule(() -> sendMail(packet, retries + 1, session, deadline), MAIL_RETRY_DELAY);
-        });
-    }
-
-    private void discardPendingMails() {
-        PendingMail mail;
-        while ((mail = pendingMails.poll()) != null) {
-            log.error("Mail push was not sent: {}", mail);
-        }
-    }
-
-    private record PendingMail(UUID key, String json) {}
 
     public void pushSnapshot(UUID key, byte @Nullable [] snapshot) {
         if (snapshot == null) return;

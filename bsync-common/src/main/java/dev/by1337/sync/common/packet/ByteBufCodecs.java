@@ -12,14 +12,14 @@ import java.util.function.Function;
 
 public class ByteBufCodecs {
 
-  public   static <T> @Nullable T readOptional(ByteBuf buf, Function<ByteBuf, T> reader) {
+    public static <T> @Nullable T readOptional(ByteBuf buf, Function<ByteBuf, T> reader) {
         if (buf.readBoolean()) {
             return reader.apply(buf);
         }
         return null;
     }
 
-    public static <T> void writeOptional(ByteBuf buf, @Nullable T t, BiConsumer<@NotNull ByteBuf,@NotNull T> writer) {
+    public static <T> void writeOptional(ByteBuf buf, @Nullable T t, BiConsumer<@NotNull ByteBuf, @NotNull T> writer) {
         if (t == null) {
             buf.writeBoolean(false);
         } else {
@@ -28,35 +28,39 @@ public class ByteBufCodecs {
         }
     }
 
-    public  static void writeUtf8(ByteBuf buf, String str) {
+    public static void writeUtf8(ByteBuf buf, String str) {
         byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
         buf.writeInt(bytes.length);
         buf.writeBytes(bytes);
     }
 
-    public  static String readUtf8(ByteBuf buf) {
+    public static String readUtf8(ByteBuf buf) {
+        return readUtf8(buf, Short.MAX_VALUE);
+    }
+
+    public static String readUtf8(ByteBuf buf, int maxLength) {
         int length = buf.readInt();
-        if (length < 0 || length > Short.MAX_VALUE) throw new DecoderException("Invalid utf8 length: " + length);
+        if (length < 0 || length > maxLength) throw new DecoderException("Invalid utf8 length: " + length);
         byte[] bytes = new byte[length];
         buf.readBytes(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    public  static void writeUUID(ByteBuf buf, UUID uuid) {
+    public static void writeUUID(ByteBuf buf, UUID uuid) {
         buf.writeLong(uuid.getMostSignificantBits());
         buf.writeLong(uuid.getLeastSignificantBits());
     }
 
-    public  static UUID readUUID(ByteBuf buf) {
+    public static UUID readUUID(ByteBuf buf) {
         return new UUID(buf.readLong(), buf.readLong());
     }
 
-    public   static void writeByteArray(ByteBuf buf, byte[] bytes) {
+    public static void writeByteArray(ByteBuf buf, byte[] bytes) {
         buf.writeInt(bytes.length);
         buf.writeBytes(bytes);
     }
 
-    public   static byte[] readByteArray(ByteBuf buf) {
+    public static byte[] readByteArray(ByteBuf buf) {
         int length = buf.readInt();
         if (length < 0 || length >= 32 << 20) throw new DecoderException("Invalid array length: " + length);
         byte[] bytes = new byte[length];

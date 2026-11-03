@@ -29,10 +29,19 @@ class ClientMailboxHandlerTest {
     void setUp() throws Exception {
         handler = new ClientLocksHandler(Locks.Type.ONLY_MAILBOX);
         handler.lockManager(new LockManager() {
-            public boolean ensureLockOwnership(UUID key) { return true; }
-            public void acceptMail(UUID key, String json) { processed.add(json); }
-            public void forceUnlock(UUID key) { }
-            public void close() { }
+            public boolean ensureLockOwnership(UUID key) {
+                return true;
+            }
+
+            public void acceptMail(UUID key, String json) {
+                processed.add(json);
+            }
+
+            public void forceUnlock(UUID key) {
+            }
+
+            public void close() {
+            }
         });
         setLock(TOKEN);
     }
@@ -87,6 +96,37 @@ class ClientMailboxHandlerTest {
         assertEquals(List.of("first", "second", "first"), processed);
         assertEquals(5, responses.size());
         assertTrue(responses.stream().allMatch(C2SMailResponsePacket::isAccepted));
+    }
+
+    @Test
+    void handlerFailureIsNotAcknowledgedOrDeduplicatedBeforeSuccessfulRetry() {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        handler.lockManager(new LockManager() {
+            public boolean ensureLockOwnership(UUID key) {
+                return true;
+            }
+
+            public void acceptMail(UUID key, String json) {
+                assertTrue(responses.isEmpty() || responses.getLast().isRejected(), "No success ACK before handler returns");
+                if (calls.incrementAndGet() == 1) throw new IllegalStateException("temporary failure");
+                processed.add(json);
+            }
+
+            public void forceUnlock(UUID key) {
+            }
+
+            public void close() {
+            }
+        });
+        var mail = new S2CMailAcceptPacket(player, "mail", TOKEN, UUID.randomUUID());
+        deliver(mail);
+        assertTrue(responses.getLast().isRejected());
+        assertTrue(processed.isEmpty());
+        deliver(mail);
+        assertTrue(responses.getLast().isAccepted());
+        deliver(mail);
+        assertEquals(2, calls.get());
+        assertEquals(List.of("mail"), processed);
     }
 
     @Test

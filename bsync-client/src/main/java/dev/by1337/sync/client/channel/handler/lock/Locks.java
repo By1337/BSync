@@ -1,13 +1,14 @@
 package dev.by1337.sync.client.channel.handler.lock;
 
 import dev.by1337.sync.common.channel.ChannelType;
+import dev.by1337.sync.common.transfer.TransferStorage;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
-public interface Locks {
+public interface Locks extends TransferStorage {
     boolean isLocked(UUID uuid);
 
     void pushMail(UUID key, String json);
@@ -37,6 +38,7 @@ public interface Locks {
         ALL(ChannelType.LOCKS, true, true),
         ONLY_BLOBS(ChannelType.LOCKS_BLOBS_ONLY, false, true),
         ONLY_MAILBOX(ChannelType.LOCKS_MAILBOX_ONLY, true, false);
+
         public final String channelType;
         public final boolean hasMailbox;
         public final boolean hasBlobs;

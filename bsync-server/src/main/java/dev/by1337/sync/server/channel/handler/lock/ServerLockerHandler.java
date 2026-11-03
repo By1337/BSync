@@ -6,13 +6,19 @@ import dev.by1337.sync.common.channel.pipeline.ChannelRuntime;
 import dev.by1337.sync.common.channel.pipeline.Connection;
 import dev.by1337.sync.common.channel.pipeline.Pipeline;
 import dev.by1337.sync.common.channel.pipeline.SocketConnection;
+import dev.by1337.sync.common.packet.impl.c2s.C2SExportPagePacket;
+import dev.by1337.sync.common.packet.impl.c2s.C2SImportDataPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SLoadSnapshotPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SLockAndGetBlobRequestPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SRenewLockPacket;
 import dev.by1337.sync.common.packet.impl.c2s.C2SUnlockPacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
+import dev.by1337.sync.common.packet.impl.s2c.S2CImportResultPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CLockStatusAndBlobPacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CSnapshotPacket;
+import dev.by1337.sync.common.transfer.TransferEntry;
+import dev.by1337.sync.common.transfer.TransferResult;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import dev.by1337.sync.server.DedicatedServer;
 import dev.by1337.sync.server.channel.ServerChannelRuntime;
@@ -33,8 +39,20 @@ public class ServerLockerHandler extends GetPostChannelHandler {
     private ServerChannelRuntime serverChannel;
     private DedicatedServer server;
     private @Nullable ServerBlobRepoHandler blobs;
+    private @Nullable ServerMailboxHandler mailbox;
 
     public ServerLockerHandler() {
+        registerGet(C2SExportPagePacket.class, request -> {
+            if (request.kind() == TransferEntry.Kind.DATA) {
+                return blobs == null ? new ResponseFuture<>(S2CExportPagePacket.empty())
+                        : blobs.exportPage(request);
+            }
+            return mailbox == null ? new ResponseFuture<>(S2CExportPagePacket.empty())
+                    : mailbox.exportPage(request);
+        });
+        registerGet(C2SImportDataPacket.class, (request, connection) -> blobs == null ? new ResponseFuture<>(new S2CImportResultPacket(
+                TransferResult.Status.UNSUPPORTED, "Channel has no blob storage"))
+                : blobs.importData(request, connection));
         registerSoftPost(ClientDisconnectMessage.class, msg -> {
             lockMap.markDisconnected(msg.connection());
         });
@@ -57,10 +75,11 @@ public class ServerLockerHandler extends GetPostChannelHandler {
             return future;
         });
     }
-    private void lockAndGetBlob(ResponseFuture<S2CLockStatusAndBlobPacket> future, C2SLockAndGetBlobRequestPacket r, Connection conn, int ttl){
+
+    private void lockAndGetBlob(ResponseFuture<S2CLockStatusAndBlobPacket> future, C2SLockAndGetBlobRequestPacket r, Connection conn, int ttl) {
         if (!r.recovery() && server.uptimeMillis() < 3_000) {
             log.warn("Guard time for key {}", r.key());
-            eventLoop.schedule(() -> lockAndGetBlob(future, r, conn, ttl -1), 500);
+            eventLoop.schedule(() -> lockAndGetBlob(future, r, conn, ttl - 1), 500);
             return;
         }
         var lock = lockMap.tryLock(r.key(), conn.transport());
@@ -70,15 +89,15 @@ public class ServerLockerHandler extends GetPostChannelHandler {
                         S2CLockStatusAndBlobPacket.Status.REJECTED, null, -1, r.version())
                 );
             } else {
-                eventLoop.schedule(() -> lockAndGetBlob(future, r, conn, ttl -1), 500);
+                eventLoop.schedule(() -> lockAndGetBlob(future, r, conn, ttl - 1), 500);
             }
         } else {
             future.complete(new S2CLockStatusAndBlobPacket(
-                            S2CLockStatusAndBlobPacket.Status.ACCEPTED,
-                            r.recovery() || blobs == null ? null : blobs.loadBlob(r.key()),
-                            lock.token,
-                            r.version()
-                    )
+                    S2CLockStatusAndBlobPacket.Status.ACCEPTED,
+                    r.recovery() || blobs == null ? null : blobs.loadBlob(r.key()),
+                    lock.token,
+                    r.version()
+            )
             );
         }
     }
@@ -93,13 +112,14 @@ public class ServerLockerHandler extends GetPostChannelHandler {
         serverChannel = runtime;
         server = runtime.server();
         blobs = pipeline.getIfExist(ServerBlobRepoHandler.class);
+        mailbox = pipeline.getIfExist(ServerMailboxHandler.class);
         eventLoop.repeat(this::tick, 15_000, () -> closing);
     }
 
     private void tick() {
         long now = System.currentTimeMillis();
         for (var lock : List.copyOf(lockMap.key2lock.values())) {
-            if (lock.lastConfirm + LockMap.OUTDATE_TIME_MS < now) {
+            if (!lock.importing && lock.lastConfirm + LockMap.OUTDATE_TIME_MS < now) {
                 lockMap.unlock(lock.key);
                 var v = serverChannel.lookup(lock.owner);
                 if (v != null) v.write(new S2CForceUnlockPacket(lock.key, lock.token));
@@ -120,7 +140,22 @@ public class ServerLockerHandler extends GetPostChannelHandler {
         return lockMap.isOwner(key, transport, token);
     }
 
+    LockData reserveImport(UUID key, SocketConnection connection) {
+        LockData lock = lockMap.tryLock(key, connection);
+        if (lock != null) lock.importing = true;
+        return lock;
+    }
+
+    void releaseImport(LockData lock) {
+        if (lockMap.getLock(lock.key) == lock) lockMap.unlock(lock.key);
+    }
+
+    public Set<UUID> lockedKeys() {
+        return Set.copyOf(lockMap.key2lock.keySet());
+    }
+
     public static class LockData {
+        public boolean importing;
         public boolean disconnected;
         public long disconnectedAt;
         public int token;
@@ -202,7 +237,7 @@ public class ServerLockerHandler extends GetPostChannelHandler {
         public @Nullable LockData tryLock(UUID key, SocketConnection c) {
             var old = key2lock.get(key);
             if (old != null) {
-                if (old.disconnected && old.disconnectedAt + 2_000 <= System.currentTimeMillis()) {
+                if (!old.importing && old.disconnected && old.disconnectedAt + 2_000 <= System.currentTimeMillis()) {
                     unlock(key);
                     return tryLock(key, c);
                 }

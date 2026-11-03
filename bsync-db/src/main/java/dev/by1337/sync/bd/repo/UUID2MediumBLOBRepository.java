@@ -6,9 +6,13 @@ import dev.by1337.sync.bd.table.K2VTable;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Consumer;
 
 public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
@@ -33,13 +37,13 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
                         DEFAULT CURRENT_TIMESTAMP
                         ON UPDATE CURRENT_TIMESTAMP,
                     `data` MEDIUMBLOB NOT NULL,
-                
+
                     PRIMARY KEY (`id`)
                 ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
+            Statement statement = connection.createStatement()) {
 
             statement.execute(sql);
         }
@@ -55,12 +59,12 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
 
             connection.setAutoCommit(false);
 
             K2VPair<UUID, byte @NotNull []> p;
-            while (limit-- > 0 && (p = queue.poll()) != null){
+            while (limit-- > 0 && (p = queue.poll()) != null) {
                 statement.setBytes(1, UUIDUtil.uuidToBytes(p.key));
                 statement.setBytes(2, p.value);
                 c.accept(p);
@@ -81,8 +85,9 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
 
+            connection.setAutoCommit(true);
             statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
             statement.setBytes(2, data);
 
@@ -98,7 +103,7 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
 
             statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
 
@@ -112,6 +117,54 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
         }
     }
 
+    /** Keyset scan with driver-side streaming, bounded by rows and decoded bytes. */
+    public Page exportPage(UUID afterKey, int rows, int byteLimit) throws SQLException {
+        return exportPage(afterKey, rows, byteLimit, key -> true);
+    }
+
+    public Page exportPage(UUID afterKey, int rows, int byteLimit, Predicate<UUID> include) throws SQLException {
+        if (rows < 1 || rows > 256 || byteLimit < 1) throw new IllegalArgumentException("Invalid export page limits");
+        String query = "SELECT id, data FROM `" + tableName.replace("`", "``") + "`"
+                + (afterKey == null ? "" : " WHERE id > ?") + " ORDER BY id LIMIT " + rows;
+        var result = new ArrayList<K2VPair<UUID, byte[]>>();
+        UUID cursor = afterKey;
+        int bytes = 0;
+        int scanned = 0;
+        boolean full = false;
+        try (Connection connection = dataSource.getConnection();
+            PreparedStatement statement = connection.prepareStatement(query, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            boolean mysql = connection.getMetaData().getDriverName().toLowerCase(Locale.ROOT).contains("mysql");
+            statement.setFetchSize(mysql ? Integer.MIN_VALUE : 1);
+            if (afterKey != null) statement.setBytes(1, UUIDUtil.uuidToBytes(afterKey));
+            try (ResultSet values = statement.executeQuery()) {
+                while (values.next()) {
+                    scanned++;
+                    UUID key = UUIDUtil.bytesToUuid(values.getBytes(1));
+                    if (!include.test(key)) {
+                        cursor = key;
+                        continue;
+                    }
+                    byte[] data = values.getBytes(2);
+                    if (!result.isEmpty() && bytes + data.length > byteLimit) {
+                        full = true;
+                        break;
+                    }
+                    cursor = key;
+                    result.add(new K2VPair<>(cursor, data));
+                    bytes += data.length;
+                    if (bytes >= byteLimit) {
+                        full = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return new Page(List.copyOf(result), cursor, !full && scanned < rows);
+    }
+
+    public record Page(List<K2VPair<UUID, byte[]>> entries, UUID afterKey, boolean done) {
+    }
+
     public boolean contains(@NotNull UUID uuid) throws SQLException {
         String sql = """
                 SELECT 1
@@ -121,7 +174,7 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
 
             statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
 
@@ -136,19 +189,19 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
     }
 
     @Override
-    public void removeAll(Queue<UUID> queue, int limit, Consumer<UUID> c) throws SQLException{
+    public void removeAll(Queue<UUID> queue, int limit, Consumer<UUID> c) throws SQLException {
         String sql = """
                 DELETE FROM `%s`
                 WHERE `id` = ?
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
 
             connection.setAutoCommit(false);
 
             UUID p;
-            while (limit-- > 0 && (p = queue.poll()) != null){
+            while (limit-- > 0 && (p = queue.poll()) != null) {
                 statement.setBytes(1, UUIDUtil.uuidToBytes(p));
                 c.accept(p);
                 statement.addBatch();
@@ -166,7 +219,7 @@ public final class UUID2MediumBLOBRepository implements K2VTable<UUID, byte[]> {
                 """.formatted(tableName);
 
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
 
             statement.setBytes(1, UUIDUtil.uuidToBytes(uuid));
 

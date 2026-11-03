@@ -8,17 +8,21 @@ import io.netty.buffer.ByteBuf;
 
 import java.util.UUID;
 
-public record C2SPushMailPacket(UUID key, String json, long uid) implements Packet, ExpectsResponse<A2AFlagResponse> {
+public record C2SPushMailPacket(UUID key, String json, UUID uid) implements Packet, ExpectsResponse<A2AFlagResponse> {
+
+    public C2SPushMailPacket(UUID key, String json, long uid) {
+        this(key, json, new UUID(0, uid));
+    }
 
     public C2SPushMailPacket(ByteBuf buf, int protocolVersion) {
-        this(ByteBufCodecs.readUUID(buf), ByteBufCodecs.readUtf8(buf), buf.readLong());
+        this(ByteBufCodecs.readUUID(buf), ByteBufCodecs.readUtf8(buf, dev.by1337.sync.common.mail.Mail.MAX_PAYLOAD_BYTES), ByteBufCodecs.readUUID(buf));
     }
 
     @Override
     public void write(ByteBuf buf, int protocolVersion) {
         ByteBufCodecs.writeUUID(buf, key);
         ByteBufCodecs.writeUtf8(buf, json);
-        buf.writeLong(uid);
+        ByteBufCodecs.writeUUID(buf, uid);
     }
 
 }

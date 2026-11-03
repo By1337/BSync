@@ -49,10 +49,10 @@ public class DataBatcher<T> {
     }
 
     public static <T, R> BatcherPair<T, R> createPair(
-            final int capacity,
-            EventLoopWorker worker,
-            Flusher<T> tFlusher,
-            Flusher<R> rFlusher
+        final int capacity,
+        EventLoopWorker worker,
+        Flusher<T> tFlusher,
+        Flusher<R> rFlusher
     ) {
         var holder = new Object() {
             final AtomicBoolean load50Ping = new AtomicBoolean();
@@ -110,6 +110,12 @@ public class DataBatcher<T> {
                 ioPing.run();
             }
         }
+    }
+
+    /** Flush barrier for committed writes; unlike the periodic flusher, propagates SQL failure. */
+    public void flushNow() throws SQLException {
+        if (closed) throw new IllegalStateException("Batch is closed");
+        flusher.accept(queue, Integer.MAX_VALUE, value -> size.decrementAndGet());
     }
 
     private void flush(int limit) {

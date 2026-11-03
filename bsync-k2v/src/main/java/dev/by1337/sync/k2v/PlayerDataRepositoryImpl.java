@@ -1,6 +1,9 @@
 package dev.by1337.sync.k2v;
 
+import dev.by1337.sync.k2v.login.ConfigurationPacketLoginHook;
 import dev.by1337.sync.k2v.storage.PlayerDataStorage;
+import dev.by1337.sync.k2v.transfer.RepositoryTransfer;
+import dev.by1337.sync.k2v.transfer.TransferStats;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -12,10 +15,12 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,8 +28,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataRepository<T> {
+    private static final BooleanSupplier UNTRACKED_CONNECTION = () -> true;
     private static final Logger log = LoggerFactory.getLogger(PlayerDataRepositoryImpl.class);
     private final Plugin plugin;
     private final Map<UUID, Wrapped<T>> users;
@@ -32,57 +39,61 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
     private final DataManager<T> dataManager;
     private final AtomicBoolean closing = new AtomicBoolean();
     private final Listener loginHook;
+    private BukkitTask pendingLoginCleanup;
 
     public PlayerDataRepositoryImpl(PlayerDataStorage storage, Plugin plugin, DataManager<T> dataManager) {
         this.storage = storage;
         this.plugin = plugin;
         this.dataManager = dataManager;
         users = new ConcurrentHashMap<>();
-        storage.setMailAccept(this::onMail);
+        storage.setMailHandler(mail -> onMail(mail.owner(), mail.payload(), mail.id()));
         storage.setLockValidator(users::containsKey);
+        storage.setLockLostHandler(this::onLockLost);
 
         if (plugin != null) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             if (hasClass("com.by1337.leaf.event.player.AsyncPlayerDataLoadEvent")) {
                 loginHook = new AsyncLoadLoginHook();
-                plugin.getServer().getPluginManager().registerEvents(
-                        loginHook,
-                        plugin
-                );
+            } else if (hasClass("io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent")) {
+                loginHook = new ConfigurationLoginHook();
+            } else if (ConfigurationPacketLoginHook.isSupported()) {
+                loginHook = new ConfigurationPacketLoginHook(plugin,
+                        (key, connected) -> loadDataAndLock(key, connected) != null);
             } else {
                 loginHook = new DefaultLoginHook();
-                plugin.getServer().getPluginManager().registerEvents(
-                        loginHook,
-                        plugin
-                );
-                if (hasClass("io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent")) {
-                    plugin.getServer().getPluginManager().registerEvent(
-                            io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent.class,
-                            this,
-                            EventPriority.MONITOR,
-                            (listener, event0) -> {
-                                if (event0 instanceof io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent event) {
-                                    if (event.isAllowed()) return;
-                                    if (event.getConnection() instanceof io.papermc.paper.connection.PlayerLoginConnection plc) {
-                                        var v = plc.getAuthenticatedProfile();
-                                        if (v != null)
-                                            removeData(v.getId());
-                                    }
-                                }
-                            },
-                            plugin
-                    );
-                }
+                log.warn("No post-login async hook available: proxy transfers may fail on this Paper version.");
             }
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                var v = loadDataAndLock(player.getUniqueId());
-                if (v == null) {
-                    try {
-                        dataManager.forceUnlock(player.getUniqueId());
-                    } catch (Exception e) {
-                        log.error("Failed to forceUnlock");
+            plugin.getServer().getPluginManager().registerEvents(loginHook, plugin);
+            pendingLoginCleanup = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+                for (var entry : users.entrySet()) {
+                    var value = entry.getValue();
+                    if (value.joinTime == 0 && (!value.connected.getAsBoolean()
+                            || (value.connected == UNTRACKED_CONNECTION
+                                    && System.nanoTime() - value.createTime > TimeUnit.SECONDS.toNanos(60)))) {
+                        removeData(entry.getKey(), value);
                     }
                 }
+            }, 20L, 20L);
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                    var data = loadDataAndLock(player.getUniqueId(), player::isOnline);
+                    if (closing.get()) return;
+                    if (data != null) {
+                        var loaded = users.get(player.getUniqueId());
+                        if (loaded != null) loaded.joinTime = System.currentTimeMillis();
+                        storage.doMailsLoad(player.getUniqueId());
+                    } else if (player.isOnline()) {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            if (!player.isOnline() || closing.get()) return;
+                            try {
+                                dataManager.forceUnlock(player.getUniqueId());
+                            } catch (Exception e) {
+                                log.error("Failed to forceUnlock {}", player.getUniqueId(), e);
+                            }
+                            player.kick(Component.text("Failed to load player data!"));
+                        });
+                    }
+                });
             }
         } else {
             // else in test?
@@ -90,23 +101,50 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         }
     }
 
-    private void onMail(UUID key, String mail) {
-        T user = Wrapped.unwrap(users.get(key));
+    private void onMail(UUID key, String mail, UUID messageId) {
+        T user = getUser(key);
         if (user == null) {
-            log.error("Mail for unloaded player {} {}", key, mail);
-            return;
+            throw new IllegalStateException("Mail for unloaded player " + key);
         }
         try {
-            dataManager.acceptMail(user, mail, key);
+            dataManager.acceptMail(user, mail, key, messageId);
         } catch (Exception e) {
-            log.error("Failed to accept mail {}", mail, e);
+            log.error("Failed to accept mail id={} owner={}", messageId, key, e);
+            throw new IllegalStateException("Mail handler failed: " + messageId, e);
         }
+    }
+
+    private void onLockLost(UUID key, int version) {
+        var value = users.get(key);
+        if (value == null) return;
+        synchronized (value) {
+            if (users.get(key) != value || (version != -1 && value.version != version) || value.lost) return;
+            value.lost = true;
+        }
+        // Keep the reservation until Quit/failed login: a new local login must not
+        // replace this session while the old player is still being disconnected.
+        Runnable disconnect = () -> {
+            if (users.get(key) != value) return;
+            try {
+                dataManager.forceUnlock(key);
+            } catch (Exception e) {
+                log.error("Failed to notify lock loss for {}", key, e);
+            }
+            if (plugin != null) {
+                Player player = plugin.getServer().getPlayer(key);
+                if (player != null) player.kick(Component.text("Player data lease was lost. Please reconnect."));
+            }
+        };
+        if (plugin == null) disconnect.run();
+        else if (!closing.get()) plugin.getServer().getScheduler().runTask(plugin, disconnect);
     }
 
     @Override
     public void close() {
         if (!closing.compareAndSet(false, true)) return;
         if (plugin != null) {
+            if (pendingLoginCleanup != null) pendingLoginCleanup.cancel();
+            if (loginHook instanceof ConfigurationPacketLoginHook hook) hook.close();
             HandlerList.unregisterAll(this);
             if (loginHook != null) {
                 HandlerList.unregisterAll(loginHook);
@@ -129,27 +167,34 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
 
     @Override
     public @Nullable T getUser(UUID key) {
-        return Wrapped.unwrap(users.get(key));
+        T value = Wrapped.unwrap(users.get(key));
+        return value != null && storage.isLocked(key) ? value : null;
     }
 
     @Override
     public void pushMail(UUID key, String mail) {
-        T user;
-        if (!closing.get() && (user = Wrapped.unwrap(users.get(key))) != null) {
-            try {
-                dataManager.acceptMail(user, mail, key);
-            } catch (Exception e) {
-                log.error("Failed to accept mail! {}", mail, e);
-            }
-        } else {
-            storage.pushMail(key, mail);
-        }
+        if (closing.get()) throw new IllegalStateException("Repository is closed");
+        storage.pushMail(key, mail);
+    }
+
+    @Override
+    public CompletableFuture<TransferStats> exportTo(Path file) {
+        if (closing.get()) return CompletableFuture.failedFuture(new IllegalStateException("Repository is closed"));
+        return RepositoryTransfer.exportTo(storage, file);
+    }
+
+    @Override
+    public CompletableFuture<TransferStats> importFrom(Path file, int parallelism) {
+        if (closing.get()) return CompletableFuture.failedFuture(new IllegalStateException("Repository is closed"));
+        return RepositoryTransfer.importFrom(storage, file, parallelism);
     }
 
     @Override
     public void pushSnapshot(UUID key, T user) {
         if (users.containsKey(key)) {
-            users.put(key, new Wrapped<>(user));
+            var value = users.get(key);
+            if (value == null || value.lost) return;
+            value.val = user;
             if (closing.get()) return; //no write
             write(key, user);
         } else {
@@ -159,8 +204,7 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
 
     @Override
     public CompletableFuture<@Nullable T> loadSnapshot(UUID key) {
-        return storage.loadSnapshot(key).thenApply(snapshot ->
-                snapshot == null ? null : dataManager.read(snapshot, key));
+        return storage.loadSnapshot(key).thenApply(snapshot -> snapshot == null ? null : dataManager.read(snapshot, key));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -192,7 +236,7 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         var player = event.getPlayer();
         if (!player.isOnline()) return;
         var v = users.get(player.getUniqueId());
-        if (v == null) {
+        if (v == null || v.val == null || v.lost) {
             player.kick(Component.text("Failed to load player data!"));
         } else {
             v.joinTime = System.currentTimeMillis();
@@ -200,77 +244,89 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
         }
     }
 
-    private void removeData(UUID key) {
-        var old = users.get(key);
-        if (old != null) {
-            if (old.val != null) {
-                write(key, old.val);
-            }
-            users.remove(key, old);
-            storage.unlock(key);
+    private void removeData(UUID key, Wrapped<T> value) {
+        synchronized (value) {
+            if (users.get(key) != value) return;
+            if (value.val != null && !value.lost) write(key, value.val);
+            users.remove(key, value);
+            storage.unlock(key, value.version);
         }
     }
 
     private @Nullable T loadDataAndLock(UUID key) {
         var old = users.get(key);
-        if (old != null) {
-            var now = System.currentTimeMillis();
-            if (old.joinTime == 0 && now - old.createTime > 5_000) {
-                // потерялся после Login
-                if (old.val != null) {
-                    write(key, old.val);
-                }
-                users.remove(key, old);
-            }
+        // Legacy hooks cannot identify the pending connection. Preserve their stale-login
+        // recovery without expiring a live configuration connection on supported Paper.
+        if (old != null && old.connected == UNTRACKED_CONNECTION && old.joinTime == 0
+                && System.nanoTime() - old.createTime > TimeUnit.SECONDS.toNanos(5)) {
+            removeData(key, old);
         }
-        if (users.putIfAbsent(key, new Wrapped<>(null)) != null) {
-            return null;
-        }
+        return loadDataAndLock(key, UNTRACKED_CONNECTION);
+    }
+
+    private @Nullable T loadDataAndLock(UUID key, BooleanSupplier connected) {
+        if (closing.get() || !connected.getAsBoolean()) return null;
+        Wrapped<T> pending = new Wrapped<>(null, connected);
+        if (users.putIfAbsent(key, pending) != null) return null;
         CompletableFuture<T> future = new CompletableFuture<>();
-        final int version = storage.lockAndLoadData(key, (b, payload) -> {
-            if (b == false) {
-                future.complete(null);
-                return;
-            }
-            try {
-                T userData = dataManager.read(payload, key);
-                users.put(key, new Wrapped<>(userData));
-                future.complete(userData);
-                return;
-            } catch (Exception e) {
-                log.error("Failed to deserialize player data", e);
-                users.remove(key);
-                storage.unlock(key);
-                return;
-            }
-        });
         try {
-            T t = future.get(30, TimeUnit.SECONDS);
-            if (t == null) {
-                log.error("Failed to load player data! timeout");
-                storage.unlock(key, version);
-                return null;
+            synchronized (pending) {
+                pending.version = storage.lockAndLoadData(key, (locked, payload) -> {
+                    synchronized (pending) {
+                        if (future.isDone() || users.get(key) != pending || pending.lost || closing.get()
+                                || !connected.getAsBoolean()) {
+                            future.complete(null);
+                            return;
+                        }
+                        if (!locked) {
+                            future.complete(null);
+                            return;
+                        }
+                        try {
+                            pending.val = dataManager.read(payload, key);
+                            future.complete(pending.val);
+                        } catch (Exception e) {
+                            log.error("Failed to deserialize player data {}", key, e);
+                            future.completeExceptionally(e);
+                        }
+                    }
+                });
             }
-            return t;
+            T data = future.get(30, TimeUnit.SECONDS);
+            synchronized (pending) {
+                if (data != null && users.get(key) == pending && !pending.lost && !closing.get()
+                        && connected.getAsBoolean() && storage.isLocked(key))
+                    return data;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted loading player data {}", key, e);
         } catch (Exception e) {
-            log.error("Failed to load player data!", e);
-            storage.unlock(key, version);
-            return null;
+            log.error("Failed to load player data {}", key, e);
         }
+        synchronized (pending) {
+            future.complete(null);
+            if (users.remove(key, pending)) storage.unlock(key, pending.version);
+        }
+        return null;
     }
 
     private static class Wrapped<T> {
-        private final T val;
-        private long joinTime;
-        private final long createTime = System.currentTimeMillis();
+        private volatile T val;
+        private volatile boolean lost;
+        private volatile long joinTime;
+        private int version;
+        private final BooleanSupplier connected;
+        private final long createTime = System.nanoTime();
 
-        private Wrapped(T val) {
+        private Wrapped(T val, BooleanSupplier connected) {
             this.val = val;
+            this.connected = connected;
         }
 
         public static <T> @Nullable T unwrap(@Nullable Wrapped<T> w) {
             if (w == null) return null;
-            return w.val;
+            return w.lost ? null : w.val;
         }
     }
 
@@ -284,10 +340,13 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
     }
 
     private class DefaultLoginHook implements Listener {
+        private final Map<AsyncPlayerPreLoginEvent, Wrapped<T>> attempts = new ConcurrentHashMap<>();
+
         @EventHandler(priority = EventPriority.MONITOR)
         public void onLoginMonitor(AsyncPlayerPreLoginEvent event) {
-            if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
-                removeData(event.getUniqueId());
+            var attempt = attempts.remove(event);
+            if (attempt != null && event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
+                removeData(event.getUniqueId(), attempt);
             }
         }
 
@@ -303,6 +362,34 @@ public class PlayerDataRepositoryImpl<T> implements Listener, PlayerDataReposito
             if (data == null) {
                 event.setLoginResult(AsyncPlayerPreLoginEvent.Result.KICK_OTHER);
                 event.kickMessage(Component.text("Failed to load player data!"));
+            } else {
+                var attempt = users.get(event.getUniqueId());
+                if (attempt != null) attempts.put(event, attempt);
+            }
+        }
+    }
+
+    private class ConfigurationLoginHook implements Listener {
+        @EventHandler(priority = EventPriority.HIGH)
+        public void onConfigure(io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent event) {
+            var connection = event.getConnection();
+            BooleanSupplier connected;
+            try {
+                connected = ConfigurationPacketLoginHook.configurationConnected(connection);
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                log.error("Failed to inspect configuring connection", e);
+                connection.disconnect(Component.text("Failed to load player data!"));
+                return;
+            }
+            if (!connected.getAsBoolean()) return;
+            UUID key = connection.getProfile().getId();
+            if (closing.get()) {
+                connection.disconnect(Component.text("Failed to load player data!"));
+                return;
+            }
+            var data = loadDataAndLock(key, connected);
+            if (data == null) {
+                connection.disconnect(Component.text("Failed to load player data!"));
             }
         }
     }

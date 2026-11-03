@@ -3,6 +3,10 @@ package dev.by1337.sync.client.channel.handler.lock;
 import dev.by1337.sync.client.channel.ChannelMaker;
 import dev.by1337.sync.client.channel.ServerGroup;
 import dev.by1337.sync.client.network.Connection;
+import dev.by1337.sync.common.transfer.ExportSource;
+import dev.by1337.sync.common.transfer.TransferStorage;
+import dev.by1337.sync.common.transfer.TransferEntry;
+import dev.by1337.sync.common.transfer.TransferResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -26,6 +30,18 @@ public class GroupLocks implements Locks {
     @Override
     public void pushMail(UUID key, String json) {
         group.route(key).pushMail(key, json);
+    }
+
+    @Override
+    public List<ExportSource> exportSources() {
+        return TransferStorage.shardedExportSources(
+                group.channels().stream().map(ChannelMaker.ChannelData::get).toList());
+    }
+
+    @Override
+    public CompletableFuture<TransferResult> importEntry(
+        TransferEntry entry) {
+        return group.route(entry.key()).importEntry(entry);
     }
 
     @Override

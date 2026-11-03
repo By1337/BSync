@@ -1,6 +1,7 @@
 package dev.by1337.sync.client.channel;
 
 import dev.by1337.sync.client.network.Connection;
+import dev.by1337.sync.common.transfer.ShardSelection;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,7 +30,7 @@ public class ServerGroup<T> {
 
     public T route(UUID uuid) {
         //noinspection unchecked
-        return (T) servers[Math.floorMod(hash(uuid), servers.length)];
+        return (T) servers[ShardSelection.index(uuid, servers.length)];
     }
 
     public T next() {
@@ -38,7 +39,7 @@ public class ServerGroup<T> {
     }
 
     static long hash(UUID uuid) {
-        return uuid.getMostSignificantBits() ^ uuid.getLeastSignificantBits();
+        return ShardSelection.hash(uuid);
     }
 
     public List<ChannelMaker.ChannelData<T>> channels() {

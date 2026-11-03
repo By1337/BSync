@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Packets {
-    public static final int PROTOCOL_VERSION = 8;
+    public static final int PROTOCOL_VERSION = 11;
     public static final int LAST_SUPPORTED_VERSION = PROTOCOL_VERSION;
 
     public static final PacketRegistry BSYNC_MAIN = new PacketRegistry("bsync:main", PROTOCOL_VERSION)
@@ -55,6 +55,10 @@ public class Packets {
             .add(12, C2SLoadSnapshotPacket.class, C2SLoadSnapshotPacket::new)
             .add(13, S2CSnapshotPacket.class, S2CSnapshotPacket::new)
             .add(14, C2SGiveMailUidsRequest.class, C2SGiveMailUidsRequest::new)
+            .add(15, C2SExportPagePacket.class, C2SExportPagePacket::new)
+            .add(16, S2CExportPagePacket.class, S2CExportPagePacket::new)
+            .add(17, C2SImportDataPacket.class, C2SImportDataPacket::new)
+            .add(18, S2CImportResultPacket.class, S2CImportResultPacket::new)
             .lock();
     public static final PacketRegistry BSYNC_LOGS = new PacketRegistry("bsync:logs", PROTOCOL_VERSION)
             .add(0, C2SWriteLogPacket.class, C2SWriteLogPacket::read)
