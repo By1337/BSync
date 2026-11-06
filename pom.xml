@@ -16,6 +16,7 @@
         <module>bsync-client</module>
         <module>bsync-server</module>
         <module>bsync-bukkit</module>
+        <module>bsync-velocity</module>
         <module>bsync-k2v</module>
         <module>bsync-db</module>
     </modules>

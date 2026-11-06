@@ -1,0 +1,11 @@
+# Same client identity can be reused by other network plugins via BSync.getServerId().
+# Values are expanded from the proxy process environment before YAML parsing.
+id: '{SERVER_ID}'
+workers: 1
+netty_threads: 1
+servers:
+  main:
+    group: player_data
+    ip: 127.0.0.1
+    port: 8013
+    private_key: '{BSYNC_PRIVATE_KEY}'
