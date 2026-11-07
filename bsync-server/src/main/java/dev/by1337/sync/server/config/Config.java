@@ -63,6 +63,7 @@ public class Config {
 
         } else {
             var pair = Ed25519.generateKeyPair();
+            authorized_key = pair.getPublic();
             YamlMap map = new YamlMap();
             map.set("public_key", Ed25519.keyToBase64(pair.getPublic()));
             map.set("private_key", Ed25519.keyToBase64(pair.getPrivate()));

@@ -1,6 +1,6 @@
 # BSync for Velocity
 
-Java 21+, Velocity 3.4+ (API 3.4.0). Build from the BSync root: `mvn -pl bsync-velocity -am verify`. Put `bsync-velocity-1.6.jar` in the proxy plugins directory. The plugin ID is `bsync`; Bukkit/BLib are not required. BYaml and SnakeYAML are isolated inside the plugin.
+Java 21+, Velocity 3.4+ (API 3.4.0). Build from the BSync root: `mvn -pl bsync-velocity -am verify`. Put `bsync-velocity-1.6.jar` in the proxy plugins directory. The plugin ID is `bsync`; Bukkit/BLib are not required. BYaml is isolated inside the plugin. SnakeYAML and fastutil use Velocity’s copies (`provided` dependencies); neither library is bundled or relocated by BSync.
 
 Configure `plugins/bsync/config.yml`. Its layout matches the Bukkit client: `id`, `workers`, `netty_threads`, and named `servers` entries with `group`, `ip`, `port`, `private_key`. The bundled config reads `{SERVER_ID}` and `{BSYNC_PRIVATE_KEY}` from the proxy process environment. Other `{ENV_NAME}` values work too, including host and port. Expansion happens before YAML parsing and does not escape values. Unknown variables remain unchanged; unresolved required identity/key values fail configuration validation.
 
