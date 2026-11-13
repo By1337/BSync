@@ -16,8 +16,8 @@ import java.util.function.*;
 public class ResponseFuture<T> {
     private static final Logger log = LoggerFactory.getLogger(ResponseFuture.class);
     private @Nullable T result;
-    private volatile boolean hasResult;
-    private final List<Consumer<@Nullable T>>  consumers = new ArrayList<>();
+    private boolean hasResult;
+    private final List<Consumer<@Nullable T>> consumers = new ArrayList<>();
 
     public ResponseFuture() {
     }
@@ -28,30 +28,40 @@ public class ResponseFuture<T> {
     }
 
     public void complete(@Nullable T res) {
-        if (hasResult) {
-            throw new IllegalStateException("Duplicated complete " + res);
-        }
-        hasResult = true;
-        result = res;
-        if (!consumers.isEmpty()) {
-            for (var consumer : consumers) {
-                try {
-                    consumer.accept(result);
-                } catch (Exception e) {
-                    log.error("Failed to accept response", e);
-                }
+        List<Consumer<@Nullable T>> toNotify;
+        synchronized (this) {
+            if (hasResult) {
+                throw new IllegalStateException("Duplicated complete " + res);
             }
+            result = res;
+            hasResult = true;
+            toNotify = new ArrayList<>(consumers);
             consumers.clear();
+        }
+        for (var consumer : toNotify) {
+            notifyConsumer(consumer, res);
         }
     }
 
     public ResponseFuture<T> then(Consumer<@Nullable T> consumer) {
-        if (hasResult) {
-            consumer.accept(result);
-        } else {
-            consumers.add(consumer);
+        T completedResult;
+        synchronized (this) {
+            if (!hasResult) {
+                consumers.add(consumer);
+                return this;
+            }
+            completedResult = result;
         }
+        consumer.accept(completedResult);
         return this;
+    }
+
+    private void notifyConsumer(Consumer<@Nullable T> consumer, @Nullable T value) {
+        try {
+            consumer.accept(value);
+        } catch (Exception e) {
+            log.error("Failed to accept response", e);
+        }
     }
 
     public ResponseFuture<T> ifEmpty(Runnable r) {
@@ -96,7 +106,7 @@ public class ResponseFuture<T> {
         return r;
     }
 
-    public boolean hasResult() {
+    public synchronized boolean hasResult() {
         return hasResult;
     }
 }

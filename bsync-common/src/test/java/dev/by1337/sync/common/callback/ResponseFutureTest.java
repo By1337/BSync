@@ -3,6 +3,9 @@ package dev.by1337.sync.common.callback;
 import org.testng.annotations.Test;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.testng.Assert.*;
 
@@ -77,9 +80,41 @@ public class ResponseFutureTest {
     public void failingCallbackDoesNotPreventLaterCallbacks() {
         ResponseFuture<String> future = new ResponseFuture<>();
         List<String> results = new ArrayList<>();
-        future.then(value -> { throw new IllegalArgumentException("test callback failure"); });
+        future.then(value -> {
+            throw new IllegalArgumentException("test callback failure");
+        });
         future.then(results::add);
         future.complete("value");
         assertEquals(results, List.of("value"));
+    }
+
+    @Test
+    public void concurrentRegistrationAndCompletionNotifiesOnce() throws Exception {
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int i = 0; i < 500; i++) {
+                ResponseFuture<String> future = new ResponseFuture<>();
+                AtomicInteger calls = new AtomicInteger();
+                CyclicBarrier barrier = new CyclicBarrier(2);
+                var register = executor.submit(() -> {
+                    barrier.await();
+                    future.then(value -> {
+                        assertEquals(value, "value");
+                        calls.incrementAndGet();
+                    });
+                    return null;
+                });
+                var complete = executor.submit(() -> {
+                    barrier.await();
+                    future.complete("value");
+                    return null;
+                });
+                register.get(5, TimeUnit.SECONDS);
+                complete.get(5, TimeUnit.SECONDS);
+                assertEquals(calls.get(), 1);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
     }
 }
