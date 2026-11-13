@@ -23,7 +23,9 @@ final class ConfigLoader {
             YamlDecoder.INT.fieldOf("port"), YamlDecoder.STRING.fieldOf("private_key"));
     private static final YamlDecoder<Config> CONFIG = RecordYamlDecoder.mapOf(Config::new,
             YamlDecoder.STRING.fieldOf("id"), YamlDecoder.INT.fieldOf("workers", 1),
-            YamlDecoder.INT.fieldOf("netty_threads", 1), YamlDecoder.mapOf(YamlDecoder.STRING, CONNECTION).fieldOf("servers"));
+            YamlDecoder.INT.fieldOf("netty_threads", 1), YamlDecoder.mapOf(YamlDecoder.STRING, CONNECTION).fieldOf("servers"),
+            YamlDecoder.mapOf(YamlDecoder.STRING, YamlDecoder.STRING).fieldOf("aliases", Map.of()),
+            YamlDecoder.mapOf(YamlDecoder.STRING, YamlDecoder.STRING.listOf()).fieldOf("group_aliases", Map.of()));
 
     static {
         // This module owns a relocated BYaml copy; it does not replace another plugin's YAML reader.

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.*;
 import java.util.Map;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigLoaderTest {
@@ -24,6 +25,70 @@ class ConfigLoaderTest {
         assertEquals(2, value.workers);
         assertEquals("10.0.0.5", value.servers.get("main").ip());
         assertEquals("network", value.servers.get("main").group());
+        assertTrue(value.aliases.isEmpty());
+        assertTrue(value.groupAliases.isEmpty());
+        assertEquals(List.of("network"), value.resolveGroupNames("network"));
+        assertEquals("main", value.resolveConnectionName("main"));
+    }
+
+    @Test
+    void aliasesResolveWithoutAddingServers() throws Exception {
+        var key = Ed25519.keyToBase64(Ed25519.generateKeyPair().getPrivate());
+        var env = Map.of("SERVER_ID", "proxy-1", "BSYNC_HOST", "localhost");
+        var value = ConfigLoader.decode(config(key) + "aliases:\n  economy: main\n  players: main\n", env::get);
+
+        assertEquals("main", value.resolveConnectionName("economy"));
+        assertEquals("main", value.resolveConnectionName("players"));
+        assertEquals("unknown", value.resolveConnectionName("unknown"));
+        assertEquals(1, value.servers.size());
+    }
+
+    @Test
+    void invalidAliasesFailDuringConfigurationLoading() throws Exception {
+        var key = Ed25519.keyToBase64(Ed25519.generateKeyPair().getPrivate());
+        var env = Map.of("SERVER_ID", "proxy-1", "BSYNC_HOST", "localhost");
+        for (String aliases : new String[]{
+                "  main: main\n",
+                "  economy: missing\n",
+                "  economy: players\n  players: main\n",
+                "  economy: economy\n",
+                "  economy: players\n  players: economy\n",
+                "  ' ': main\n"
+        }) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> ConfigLoader.decode(config(key) + "aliases:\n" + aliases, env::get));
+        }
+    }
+
+    @Test
+    void groupAliasesCombineGroupsWithoutCreatingServers() throws Exception {
+        var key = Ed25519.keyToBase64(Ed25519.generateKeyPair().getPrivate());
+        var env = Map.of("SERVER_ID", "proxy-1", "BSYNC_HOST", "localhost");
+        var yaml = config(key) + "  secondary:\n    group: economy\n    ip: localhost\n    port: 8014\n    private_key: '" + key + "'\n"
+                + "group_aliases:\n  all_data: [network, economy, network]\n";
+        var value = ConfigLoader.decode(yaml, env::get);
+
+        assertEquals(List.of("network", "economy", "network"), value.resolveGroupNames("all_data"));
+        assertEquals(List.of("network"), value.resolveGroupNames("network"));
+        assertEquals(2, value.servers.size());
+    }
+
+    @Test
+    void invalidGroupAliasesFailDuringConfigurationLoading() throws Exception {
+        var key = Ed25519.keyToBase64(Ed25519.generateKeyPair().getPrivate());
+        var env = Map.of("SERVER_ID", "proxy-1", "BSYNC_HOST", "localhost");
+        for (String aliases : new String[]{
+                "  all_data: []\n",
+                "  all_data: [missing]\n",
+                "  all_data: [network, missing]\n",
+                "  network: [network]\n",
+                "  ' ': [network]\n",
+                "  all_data: [all_data]\n",
+                "  all_data: [other]\n  other: [network]\n"
+        }) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> ConfigLoader.decode(config(key) + "group_aliases:\n" + aliases, env::get));
+        }
     }
 
     @Test

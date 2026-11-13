@@ -17,7 +17,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-@Plugin(id = "bsync", name = "BSync", version = "1.6", authors = { "by1337" })
+@Plugin(id = "bsync", name = "BSync", version = "1.6.1", authors = { "by1337" })
 public final class BSync {
     private static volatile BSync instance;
     private final Logger logger;
@@ -67,11 +67,14 @@ public final class BSync {
     }
 
     public static Connection getConnection(String name) {
-        return Objects.requireNonNull(active().connections.get(name), "Unknown BSync connection: " + name);
+        BSync plugin = active();
+        return Objects.requireNonNull(plugin.connections.get(plugin.config.resolveConnectionName(name)), "Unknown BSync connection: " + name);
     }
 
     public static List<Connection> getGroup(String group) {
-        List<Connection> result = active().connections.values().stream().filter(c -> c.config().group().equals(group)).toList();
+        BSync plugin = active();
+        List<String> groups = plugin.config.resolveGroupNames(group);
+        List<Connection> result = plugin.connections.values().stream().filter(c -> groups.contains(c.config().group())).toList();
         if (result.isEmpty()) throw new IllegalStateException("Unknown BSync group: " + group);
         return result;
     }

@@ -8,6 +8,10 @@ Startup initiates connections asynchronously. An unavailable or restarting BSync
 
 Consumer plugins declare `@Dependency(id = "bsync")` and use a provided Maven dependency `dev.by1337.sync:bsync-velocity:1.6`. Do not shade a second BSync client/common copy. After initialization, `dev.by1337.sync.velocity.BSync` exposes `getServerId()`, `getConnection(name)`, `getGroup(group)`, `connections()` and `workers()`. Connection/channel/publisher APIs are the existing BSync APIs; callbacks execute on BSync workers, not a Minecraft server thread.
 
+Both Bukkit and Velocity support an optional top-level `aliases` map in `config.yml`, for example `aliases: {economy: main}`. `BSync.getConnection("economy")` returns the existing `main` connection. Aliases must point directly to keys in `servers` and cannot shadow server names. Groups and `connections()` contain each configured connection once.
+
+The separate `group_aliases` map combines existing groups, for example `group_aliases: {all_data: [player_data, economy_data]}`. `BSync.getGroup("all_data")` returns connections from both groups without duplicates; Bukkit storage addresses also support `group://all_data/<channel>`. Each alias must contain a nonempty list of existing group names and cannot shadow a group or reference another alias. Both alias sections are optional.
+
 This module provides transport. Server discovery, routing and gameplay teleportation belong to the network plugin, not this adapter.
 
 ## Runtime verification

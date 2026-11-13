@@ -90,13 +90,14 @@ public class BSync extends JavaPlugin {
     }
 
     public static Connection getConnection(String name) {
-        return Objects.requireNonNull(connections.get(name), "Unknown server: " + name);
+        return Objects.requireNonNull(connections.get(config.resolveConnectionName(name)), "Unknown server: " + name);
     }
 
     public static List<Connection> getGroup(String group) {
+        List<String> groups = config.resolveGroupNames(group);
         List<Connection> result = new ArrayList<>();
         for (Connection value : connections.values()) {
-            if (value.config().group().equals(group)) {
+            if (groups.contains(value.config().group())) {
                 result.add(value);
             }
         }

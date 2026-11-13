@@ -5,7 +5,7 @@ import dev.by1337.sync.client.config.ConnectionConfig;
 import dev.by1337.yaml.decoder.RecordYamlDecoder;
 import dev.by1337.yaml.decoder.YamlDecoder;
 
-import java.io.File;
+import java.util.Map;
 
 class Decoders {
     public static final YamlDecoder<ConnectionConfig> CONNECTION_CONFIG_DECODER = RecordYamlDecoder.mapOf(
@@ -22,6 +22,8 @@ class Decoders {
             YamlDecoder.INT.fieldOf("workers"),
             YamlDecoder.INT.fieldOf("netty_threads"),
             YamlDecoder.mapOf(YamlDecoder.STRING, CONNECTION_CONFIG_DECODER)
-                    .fieldOf("servers")
+                    .fieldOf("servers"),
+            YamlDecoder.mapOf(YamlDecoder.STRING, YamlDecoder.STRING).fieldOf("aliases", Map.of()),
+            YamlDecoder.mapOf(YamlDecoder.STRING, YamlDecoder.STRING.listOf()).fieldOf("group_aliases", Map.of())
     );
 }

@@ -9,3 +9,15 @@ servers:
     ip: 127.0.0.1
     port: 8013
     private_key: '{BSYNC_PRIVATE_KEY}'
+
+# Additional names for existing connections: alias: key from servers.
+# For example, economy: main enables BSync.getConnection("economy").
+# Multiple aliases reuse the same connection; connections() and groups stay unique.
+# Aliases must not shadow server names or point to other aliases.
+aliases: {}
+
+# Group aliases: alias name: list of existing groups (the group field in servers).
+# For example, all_data: [player_data, economy_data] combines two groups.
+# Use BSync.getGroup("all_data"); each matching connection is returned once.
+# Lists must be nonempty; aliases cannot shadow groups or point to other aliases.
+group_aliases: {}
