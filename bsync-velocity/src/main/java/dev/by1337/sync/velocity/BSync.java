@@ -17,7 +17,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-@Plugin(id = "bsync", name = "BSync", version = "1.6.1", authors = { "by1337" })
+@Plugin(id = "bsync", name = "BSync", version = "1.6.2", authors = { "by1337" })
 public final class BSync {
     private static volatile BSync instance;
     private final Logger logger;

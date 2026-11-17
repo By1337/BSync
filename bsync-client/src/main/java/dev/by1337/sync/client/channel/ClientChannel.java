@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Connection {
     private final Logger log;
@@ -31,6 +32,7 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     private final Pipeline pipeline;
     private final String channelType;
     private final AtomicBoolean channelActive = new AtomicBoolean();
+    private final AtomicReference<CompletableFuture<Void>> closeFuture = new AtomicReference<>();
     private final List<PacketRegistry> registries = new ArrayList<>();
 
     public ClientChannel(Connection connection, String id, EventLoopWorker eventLoop, String channelType) {
@@ -160,7 +162,13 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
     }
 
     public CompletableFuture<Void> close() {
-        return pipeline.closeAll();
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        if (!closeFuture.compareAndSet(null, result)) return closeFuture.get();
+        pipeline.closeAll().whenComplete((ignored, error) -> {
+            if (error == null) result.complete(null);
+            else result.completeExceptionally(error);
+        });
+        return result;
     }
 
     public String id() {

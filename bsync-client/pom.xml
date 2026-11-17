@@ -84,6 +84,12 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>7.12.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>dev.by1337.sync</groupId>
             <artifactId>bsync-common</artifactId>
             <version>${revision}</version>

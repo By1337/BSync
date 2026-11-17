@@ -33,8 +33,10 @@ public class Connection implements SocketConnection {
     private final String id;
     private final ClientBootstrap bootstrap;
     private final AtomicBoolean closing = new AtomicBoolean();
+    private final CompletableFuture<Void> closeFuture = new CompletableFuture<>();
     private ConnectionHandler connection;
     private final Map<String, ClientChannel> channels = new ConcurrentHashMap<>();
+    private final Map<ClientChannel, CompletableFuture<Void>> removals = new ConcurrentHashMap<>();
     private long ping = 0;
     private final SingleSemaphore reconnectSemaphore = new SingleSemaphore();
     private final EventLoopWorker executor;
@@ -62,42 +64,79 @@ public class Connection implements SocketConnection {
         this.connection.connect(c -> c.attr(ChannelRegistryContext.CHANNEL_REGISTRY_CONTEXT).set(registryContext));
     }
 
+    /**
+     * Removes the channel after closing all its handlers. External callers wait for
+     * completion; a reentrant call from the channel's own cleanup callback must not
+     * wait for itself. Concurrent removals share the same completion. Calls on the
+     * transport loop or while holding a handler monitor are also nonblocking;
+     * use removeChannelAsync() to observe completion without holding such resources.
+     */
     public void removeChannel(String id) {
-        var v = channels.get(id);
-        if (v == null) {
-            return;
-        }
-
-        try {
-            v.close().get(15, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.error("Error closing channel", e);
-        }
-
-        if (connection == null) {
-            registryContext.onChannelClose(id);
-            channels.remove(id);
-            return;
-        }
-        write(new C2SCloseChannelPacket(id));
-        var channel = connection.channel();
-
-        Runnable task = () -> {
-            BSUtils.safe(channel::flush);
-            registryContext.onChannelClose(id);
-            channels.remove(id);
-        };
-
-        if (channel.eventLoop().inEventLoop()) {
-            task.run();
-        } else {
-            try {
-                channel.eventLoop().submit(task).sync();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException(e);
+        var channel = channels.get(id);
+        if (channel == null) return;
+        var removal = removeChannel(channel);
+        var conn = connection;
+        var socket = conn == null ? null : conn.channel();
+        // Completion also needs the transport loop to flush queued cleanup packets.
+        if (channel.eventLoop().isWorkerThread() || socket != null && socket.eventLoop().inEventLoop()) return;
+        for (var entry : channel.pipeline().getHandlers()) {
+            if (Thread.holdsLock(entry.handler())) {
+                log.warn("Channel {} removal is asynchronous: caller holds the monitor of handler {}. "
+                        + "Release that monitor before awaiting removeChannelAsync().", id, entry.name());
+                return;
             }
         }
+        try {
+            removal.get(15, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while removing channel " + id, e);
+        } catch (Exception e) {
+            log.error("Error closing channel {}", id, e);
+        }
+    }
+
+    /** Completes after all handlers, their queued cleanup and the registration are closed. */
+    public CompletableFuture<Void> removeChannelAsync(String id) {
+        var channel = channels.get(id);
+        return channel == null ? CompletableFuture.completedFuture(null) : removeChannel(channel);
+    }
+
+    private CompletableFuture<Void> removeChannel(ClientChannel channel) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        var previous = removals.putIfAbsent(channel, result);
+        if (previous != null) return previous;
+        channel.close().whenComplete((ignored, error) -> {
+            var conn = connection;
+            var socket = conn == null ? null : conn.channel();
+            Runnable detach = () -> {
+                try {
+                    if (channels.get(channel.id()) == channel) {
+                        if (conn != null && conn.authorized()) {
+                            conn.send(new C2SCloseChannelPacket(channel.id()));
+                            if (socket != null) BSUtils.safe(socket::flush);
+                        }
+                        registryContext.onChannelClose(channel.id());
+                        channels.remove(channel.id(), channel);
+                    }
+                    if (error == null) result.complete(null);
+                    else result.completeExceptionally(error);
+                } catch (Throwable failure) {
+                    result.completeExceptionally(failure);
+                } finally {
+                    removals.remove(channel, result);
+                }
+            };
+            if (socket == null || socket.eventLoop().inEventLoop()) detach.run();
+            else {
+                try {
+                    socket.eventLoop().execute(detach);
+                } catch (RejectedExecutionException stopped) {
+                    detach.run();
+                }
+            }
+        });
+        return result;
     }
 
     public ClientChannel addChannel(String id, String channelType, Consumer<ClientChannel> init) {
@@ -204,22 +243,18 @@ public class Connection implements SocketConnection {
 
     public CompletableFuture<Void> close() {
         if (!closing.compareAndSet(false, true)) {
-            return CompletableFuture.completedFuture(null);
+            return closeFuture;
         }
 
         var conn = connection;
 
         List<CompletableFuture<?>> futures = new ArrayList<>();
 
-        if (conn != null && conn.authorized()) {
-            for (ClientChannel channel : List.copyOf(channels.values())) {
-                futures.add(channel.close());
-                // хотим закрыть канал после того как все таски запущенные из close выполняться
-                channel.eventLoop().execute(() -> conn.send(new C2SCloseChannelPacket(channel.id())));
-            }
+        for (ClientChannel channel : List.copyOf(channels.values())) {
+            futures.add(removeChannel(channel));
         }
 
-        return CompletableFuture
+        CompletableFuture
                 .allOf(futures.toArray(CompletableFuture[]::new))
                 .orTimeout(30, TimeUnit.SECONDS)
                 .exceptionally(ex -> null)
@@ -234,7 +269,10 @@ public class Connection implements SocketConnection {
                 })
                 .whenComplete((v, ex) -> {
                     channels.clear();
+                    if (ex == null) closeFuture.complete(null);
+                    else closeFuture.completeExceptionally(ex);
                 });
+        return closeFuture;
     }
 
     public String mailboxIdentity() {
