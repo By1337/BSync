@@ -57,10 +57,10 @@ public class DedicatedServer {
         connectionListener = new ConnectionListener(this);
         var workers = new EventLoopWorkers("server-worker-%d", 1);
         channelManager = new ChannelManager(workers, this);
+        commandManager = new CommandManager();
         addonLoader.enableAll();
         running = true;
         log.info("Server started :{}", connectionListener.startTcpServerListener(config.tcp_port));
-        commandManager = new CommandManager();
         startMillis = System.currentTimeMillis();
 
         workers.forEach(worker -> Metrics.METRICS.create(worker.name(), d -> {
