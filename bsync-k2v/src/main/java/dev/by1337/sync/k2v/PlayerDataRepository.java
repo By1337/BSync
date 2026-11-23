@@ -54,10 +54,7 @@ public interface PlayerDataRepository<T> {
         if (repo.regionMatches(true, 0, "mysql://", 0, 8) || repo.regionMatches(true, 0, "mariadb://", 0, 10)
                 || repo.regionMatches(true, 0, "sqlite://", 0, 9)) {
             var config = SqlStorageConfig.parse(repo, plugin.getDataFolder().toPath());
-            String identity = UUID.nameUUIDFromBytes(config.journalIdentity().getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
-            Path directory = config.isSqlite() ? plugin.getDataFolder().toPath().resolve("sql").resolve(identity)
-                    : Path.of("bsync", plugin.getName(), "sql", identity);
-            var storage = new JdbcPlayerDataStorage(config, directory,
+            var storage = new JdbcPlayerDataStorage(config,
                     type != Type.ONLY_MAILBOX, type != Type.ONLY_BLOBS);
             try {
                 return new PlayerDataRepositoryImpl<>(storage, plugin, dataManager);
@@ -87,10 +84,9 @@ public interface PlayerDataRepository<T> {
     T getUser(UUID key);
 
     /**
-     * Durably admits a mail to the local outbox before returning. Delivery is retried
-     * internally across disconnects and restarts, with a stable message ID.
-     * A successful return confirms admission, not execution of the recipient's handler.
-     * Storage/admission errors are thrown synchronously; accepted mails are never expired.
+     * Queues a mail for delivery. The repository retries delivery with a stable message ID.
+     * Local storage persists the message before returning. SQL and network storage keep
+     * unconfirmed messages in memory until the database commits them or the repository closes.
      */
     void pushMail(UUID key, String mail);
 

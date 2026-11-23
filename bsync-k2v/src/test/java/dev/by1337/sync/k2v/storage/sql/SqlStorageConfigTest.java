@@ -12,7 +12,7 @@ class SqlStorageConfigTest {
         assertEquals(pluginDirectory.resolve("players.db").toAbsolutePath().normalize().toString(), relative.database);
         var absolute = SqlStorageConfig.parse(relative.toString(), Path.of("another-plugin"));
         assertEquals(relative.database, absolute.database);
-        assertEquals(relative.journalIdentity(), absolute.journalIdentity());
+        assertEquals(relative.jdbcUrl(), absolute.jdbcUrl());
     }
 
     @Test
@@ -29,7 +29,6 @@ class SqlStorageConfigTest {
         assertEquals("IMMEDIATE", config.driverProperties().getProperty("transaction_mode"));
         var absolute = SqlStorageConfig.parse("sqlite://" + Path.of(config.database).toUri().getRawPath() + "?repository=rewards");
         assertEquals(config.jdbcUrl(), absolute.jdbcUrl());
-        assertEquals(config.journalIdentity(), absolute.journalIdentity());
         assertEquals("players", SqlStorageConfig.parse("sqlite://players.db").repository);
         assertEquals(10_000, SqlStorageConfig.parse("sqlite://players.db?timeout=10s").timeoutMillis);
         assertThrows(IllegalArgumentException.class, () -> SqlStorageConfig.parse("sqlite://dir/"));

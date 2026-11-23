@@ -254,7 +254,7 @@ class SqliteLeaseIntegrationTest {
     }
 
     private StorageHandle storage(SqlStorageConfig config) throws Exception {
-        var storage = new JdbcPlayerDataStorage(config, directory.resolve(UUID.randomUUID().toString()), true, true);
+        var storage = new JdbcPlayerDataStorage(config, true, true);
         try {
             storage.initialized().get(5, TimeUnit.SECONDS);
             return new StorageHandle(storage);

@@ -1,9 +1,10 @@
 package dev.by1337.sync.k2v.storage.sql;
 
-import dev.by1337.sync.k2v.mail.MailJournal;
+import dev.by1337.sync.k2v.mail.Mail;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -26,7 +27,7 @@ class JdbcLeaseScheduleTest {
         when(database.save(any(), any(), anyLong(), any(), anyBoolean())).thenReturn(true);
         when(database.renew(any(), any(), anyLong())).thenReturn(true);
         storage = new JdbcPlayerDataStorage(SqlStorageConfig.parse("mysql://localhost/db/repo?user=u"), database,
-                new MailJournal(null), directory, true, false, clock::get);
+                true, false, clock::get);
         storage.initialized().get(5, TimeUnit.SECONDS);
     }
 
@@ -45,7 +46,7 @@ class JdbcLeaseScheduleTest {
     void sqliteKeepsLocalOwnershipWithoutExpiryOrDatabaseRenewals() throws Exception {
         storage.close();
         storage = new JdbcPlayerDataStorage(SqlStorageConfig.parse("sqlite://" + directory.resolve("local.db").toUri().getRawPath()),
-                database, new MailJournal(null), directory, true, false, clock::get);
+                database, true, false, clock::get);
         storage.initialized().get(5, TimeUnit.SECONDS);
         acquire();
         clock.addAndGet(TimeUnit.HOURS.toNanos(1));
@@ -55,6 +56,30 @@ class JdbcLeaseScheduleTest {
         storage.pushSnapshot(player, new byte[]{ 5 });
         storage.unlock(player);
         verify(database, timeout(5000)).save(eq(player), any(), eq(1L), org.mockito.AdditionalMatchers.aryEq(new byte[]{ 5 }), eq(true));
+    }
+
+    @Test
+    void retriesUnconfirmedMailWithTheSameIdAfterSqlFailure() throws Exception {
+        storage.close();
+        var recovered = new CountDownLatch(1);
+        var attempts = new LinkedBlockingQueue<Mail>();
+        when(database.admit(any())).thenAnswer(call -> {
+            attempts.add(call.getArgument(0));
+            throw new SQLException("Database temporarily unavailable");
+        }).thenAnswer(call -> {
+            attempts.add(call.getArgument(0));
+            recovered.countDown();
+            return true;
+        });
+        storage = new JdbcPlayerDataStorage(SqlStorageConfig.parse("mysql://localhost/db/repo?user=u"),
+                database, false, true, System::nanoTime);
+        storage.pushMail(player, "reward");
+
+        assertTrue(recovered.await(5, TimeUnit.SECONDS));
+        Mail first = attempts.remove();
+        assertEquals(player, first.owner());
+        assertEquals("reward", first.payload());
+        assertEquals(first, attempts.remove());
     }
 
     @Test

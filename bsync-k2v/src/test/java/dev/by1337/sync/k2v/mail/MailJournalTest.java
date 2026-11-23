@@ -1,33 +1,34 @@
 package dev.by1337.sync.k2v.mail;
 
 import org.junit.jupiter.api.Test;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MailJournalTest {
     @Test
-    public void readsExistingCommonJournalAndKeepsItsFileFormat() throws Exception {
+    public void readsExistingVersionOneJournal() throws Exception {
         Path directory = Files.createTempDirectory("k2v-journal-compatibility");
-        UUID owner = UUID.randomUUID();
-        dev.by1337.sync.common.mail.Mail previous;
-        try (var legacy = new dev.by1337.sync.common.mail.MailJournal(directory)) {
-            previous = legacy.append(owner, "pending before upgrade");
-        }
-        Mail next;
+        Mail previous = new Mail(UUID.randomUUID(), UUID.randomUUID(), "pending before upgrade");
+        byte[] payload = previous.payload().getBytes(StandardCharsets.UTF_8);
+        byte[] record = ByteBuffer.allocate(40 + payload.length)
+                .putInt(1)
+                .putLong(previous.id().getMostSignificantBits())
+                .putLong(previous.id().getLeastSignificantBits())
+                .putLong(previous.owner().getMostSignificantBits())
+                .putLong(previous.owner().getLeastSignificantBits())
+                .putInt(payload.length)
+                .put(payload)
+                .array();
+        Path path = directory.resolve("0000000000000000001-" + previous.id() + ".mail");
+        Files.write(path, record);
         try (var journal = new MailJournal(directory)) {
-            Mail recovered = journal.pending().get(0);
-            assertEquals(previous.id(), recovered.id());
-            assertEquals(previous.owner(), recovered.owner());
-            assertEquals(previous.payload(), recovered.payload());
-            journal.acknowledge(recovered.id());
-            next = journal.append(owner, "new pending mail");
+            assertEquals(List.of(previous), journal.pending());
+            journal.acknowledge(previous.id());
         }
-        try (var legacy = new dev.by1337.sync.common.mail.MailJournal(directory)) {
-            assertEquals(1, legacy.pending().size());
-            assertEquals(next.id(), legacy.pending().get(0).id());
-            assertEquals(next.payload(), legacy.pending().get(0).payload());
-        }
+        assertFalse(Files.exists(path));
     }
 
     @Test

@@ -10,18 +10,14 @@ import dev.by1337.sync.common.packet.impl.a2a.A2AFlagResponse;
 import dev.by1337.sync.common.packet.impl.c2s.C2SPushMailPacket;
 import dev.by1337.sync.common.work.EventLoopWorker;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.*;
 
-import java.nio.file.*;
 import java.util.UUID;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ClientMailPushTest {
     private static final EventLoopWorker WORKER = new EventLoopWorker("mail-push-test");
-    @TempDir
-    Path directory;
     private final UUID player = UUID.randomUUID();
     private final BlockingQueue<RequestMsg<?>> requests = new LinkedBlockingQueue<>();
     private ClientLocksHandler handler;
@@ -29,10 +25,6 @@ class ClientMailPushTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        open();
-    }
-
-    private void open() throws Exception {
         run(() -> {
             pipeline = new Pipeline(WORKER).addFirst("capture", new ChannelHandler() {
                 public void init(ChannelRuntime runtime) {
@@ -46,7 +38,7 @@ class ClientMailPushTest {
                     else ctx.fire(msg);
                 }
             });
-            handler = new ClientLocksHandler(Locks.Type.ONLY_MAILBOX, directory);
+            handler = new ClientLocksHandler(Locks.Type.ONLY_MAILBOX);
             handler.lockManager(new LockManager() {
                 public boolean ensureLockOwnership(UUID key) {
                     return true;
@@ -89,17 +81,13 @@ class ClientMailPushTest {
     }
 
     @Test
-    void disconnectedPushIsDurableBeforeReturningAndReplayedAfterRestart() throws Exception {
+    void disconnectedPushIsSentOnActivation() throws Exception {
         handler.pushMail(player, "first");
-        assertEquals(1, records());
         assertTrue(requests.isEmpty());
-        pipeline.closeAll().get(5, TimeUnit.SECONDS);
-        open();
         active();
         var request = take();
         assertEquals("first", ((C2SPushMailPacket) request.packet()).json());
         run(() -> complete(request, true));
-        assertEquals(0, records());
     }
 
     @Test
@@ -114,23 +102,7 @@ class ClientMailPushTest {
         var retry = take();
         assertEquals(first.packet(), retry.packet());
         run(() -> complete(first, false)); // stale session must not overwrite the new attempt
-        assertEquals(1, records());
         run(() -> complete(retry, true));
-        assertEquals(0, records());
-    }
-
-    @Test
-    void closeWithUnconfirmedMailKeepsStableIdForNextProcess() throws Exception {
-        active();
-        handler.pushMail(player, "mail");
-        var first = take();
-        pipeline.closeAll().get(5, TimeUnit.SECONDS);
-        open();
-        active();
-        var retry = take();
-        assertEquals(first.packet(), retry.packet());
-        run(() -> complete(retry, true));
-        assertEquals(0, records());
     }
 
     @Test
@@ -141,13 +113,11 @@ class ClientMailPushTest {
         var first = take();
         assertEquals("first", ((C2SPushMailPacket) first.packet()).json());
         assertTrue(requests.isEmpty());
-        assertEquals(2, records());
         run(() -> complete(first, true));
         var second = take();
         assertEquals("second", ((C2SPushMailPacket) second.packet()).json());
         assertNotEquals(((C2SPushMailPacket) first.packet()).uid(), ((C2SPushMailPacket) second.packet()).uid());
         run(() -> complete(second, true));
-        assertEquals(0, records());
     }
 
     @Test
@@ -156,29 +126,17 @@ class ClientMailPushTest {
         handler.pushMail(player, "mail");
         var first = take();
         run(() -> complete(first, false));
-        assertEquals(1, records());
         var retry = take();
         assertEquals(first.packet(), retry.packet());
         run(() -> complete(retry, true));
-        assertEquals(0, records());
     }
 
     @Test
-    void queuedBeforeFirstConnectionSurvivesCloseWithoutRuntimeInitialization() {
-        Path journal = directory.resolve("never-connected");
-        var neverConnected = new ClientLocksHandler(Locks.Type.ONLY_MAILBOX, journal);
+    void closeRejectsNewMailWithoutRuntimeInitialization() {
+        var neverConnected = new ClientLocksHandler(Locks.Type.ONLY_MAILBOX);
         neverConnected.pushMail(player, "offline admission");
         neverConnected.close();
-        try (var reopened = new dev.by1337.sync.common.mail.MailJournal(journal)) {
-            assertEquals(1, reopened.pending().size());
-            assertEquals("offline admission", reopened.pending().get(0).payload());
-        }
-    }
-
-    private long records() throws Exception {
-        try (var paths = Files.list(directory)) {
-            return paths.filter(p -> p.toString().endsWith(".mail")).count();
-        }
+        assertThrows(IllegalStateException.class, () -> neverConnected.pushMail(player, "after close"));
     }
 
     private void active() throws Exception {

@@ -1,14 +1,13 @@
 package dev.by1337.sync.k2v.storage.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
-import dev.by1337.sync.k2v.mail.*;
+import dev.by1337.sync.k2v.mail.Mail;
 import dev.by1337.sync.k2v.transfer.ExportPage;
 import dev.by1337.sync.k2v.transfer.*;
 import dev.by1337.sync.k2v.storage.PlayerDataStorage;
 import org.slf4j.*;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -21,8 +20,7 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
     private final SqlLeaseRepository database;
     private final List<HikariDataSource> pools;
     private final boolean blobs, mailbox;
-    private final MailJournal outbox;
-    private final Path recoveryDirectory;
+    private final Queue<Mail> outbox = new ConcurrentLinkedQueue<>();
     private final LongSupplier clock;
     private final ThreadPoolExecutor io;
     private final ExecutorService renewIo;
@@ -40,30 +38,26 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
     };
     private volatile O2BTester<UUID> validator = key -> true;
 
-    public JdbcPlayerDataStorage(SqlStorageConfig config, Path directory, boolean blobs, boolean mailbox) {
-        this(config, resources(config), directory, blobs, mailbox);
+    public JdbcPlayerDataStorage(SqlStorageConfig config, boolean blobs, boolean mailbox) {
+        this(config, resources(config), blobs, mailbox);
     }
 
-    private JdbcPlayerDataStorage(SqlStorageConfig config, Resources resources, Path directory, boolean blobs, boolean mailbox) {
-        this(config, new SqlLeaseRepository(resources.data, resources.heartbeat, config), openJournal(resources, directory, mailbox),
-                directory.resolve("lost-snapshots"), blobs, mailbox, System::nanoTime,
+    private JdbcPlayerDataStorage(SqlStorageConfig config, Resources resources, boolean blobs, boolean mailbox) {
+        this(config, new SqlLeaseRepository(resources.data, resources.heartbeat, config), blobs, mailbox, System::nanoTime,
                 resources.data == resources.heartbeat ? List.of(resources.data) : List.of(resources.data, resources.heartbeat));
     }
 
-    JdbcPlayerDataStorage(SqlStorageConfig config, SqlLeaseRepository database, MailJournal outbox, Path recovery,
-        boolean blobs, boolean mailbox, LongSupplier clock) {
-        this(config, database, outbox, recovery, blobs, mailbox, clock, List.of());
+    JdbcPlayerDataStorage(SqlStorageConfig config, SqlLeaseRepository database, boolean blobs, boolean mailbox, LongSupplier clock) {
+        this(config, database, blobs, mailbox, clock, List.of());
     }
 
-    private JdbcPlayerDataStorage(SqlStorageConfig config, SqlLeaseRepository database, MailJournal outbox, Path recovery,
-        boolean blobs, boolean mailbox, LongSupplier clock, List<HikariDataSource> pools) {
+    private JdbcPlayerDataStorage(SqlStorageConfig config, SqlLeaseRepository database, boolean blobs, boolean mailbox, LongSupplier clock, List<HikariDataSource> pools) {
         this.config = config;
         this.database = database;
-        this.outbox = outbox;
-        this.recoveryDirectory = recovery;
         this.blobs = blobs;
         this.mailbox = mailbox;
         this.clock = clock;
+        initAfter = mailAfter = outboxAfter = now();
         this.pools = pools;
         io = new ThreadPoolExecutor(config.poolSize, config.poolSize, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(2048), task -> daemon(task, "bsync-sql-io"), new ThreadPoolExecutor.AbortPolicy());
@@ -85,16 +79,6 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
             return new Resources(data, SqlDataSources.create(config, 1, "bsync-sql-lease"));
         } catch (RuntimeException e) {
             data.close();
-            throw e;
-        }
-    }
-
-    private static MailJournal openJournal(Resources resources, Path directory, boolean enabled) {
-        try {
-            return new MailJournal(enabled ? directory.resolve("mail-outbox") : null);
-        } catch (RuntimeException e) {
-            resources.data.close();
-            resources.heartbeat.close();
             throw e;
         }
     }
@@ -153,9 +137,9 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
             }
             if ((lease.releasing || lease.revision > lease.savedRevision) && now - lease.writeAfter >= 0) queueWrite(lease);
         }
-        if (!closing.get() && ready) {
-            if (mailbox && now - outboxAfter >= 0 && !outbox.pending().isEmpty()) flushOutbox();
-            if (mailbox && now - mailAfter >= 0) pollMails();
+        if (ready && mailbox) {
+            if (now - outboxAfter >= 0 && !outbox.isEmpty()) flushOutbox();
+            if (!closing.get() && now - mailAfter >= 0) pollMails();
         }
     }
 
@@ -323,33 +307,20 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
     }
 
     private void lost(Lease lease, String reason) {
-        byte[] snapshot;
+        boolean unsavedSnapshot;
         synchronized (lease) {
             if (!lease.owned) return;
             lease.owned = false;
-            snapshot = lease.revision > lease.savedRevision ? lease.snapshot : null;
+            unsavedSnapshot = lease.revision > lease.savedRevision && lease.snapshot != null;
             leases.remove(lease.key, lease);
         }
-        log.error("SQL lease lost player={} token={} epoch={} reason={}; stale writes are fenced", lease.key, lease.token, lease.epoch, reason);
-        if (snapshot != null) quarantine(lease, snapshot);
+        log.error("SQL lease lost player={} token={} epoch={} reason={} unsavedSnapshot={}",
+                lease.key, lease.token, lease.epoch, reason, unsavedSnapshot);
         try {
             lockLost.accept(lease.key, lease.version);
         } catch (Exception e) {
             log.error("SQL lock-loss callback failed for {}", lease.key, e);
         }
-    }
-
-    private void quarantine(Lease lease, byte[] snapshot) {
-        if (!submit(() -> {
-            try {
-                Files.createDirectories(recoveryDirectory);
-                Path target = recoveryDirectory.resolve(lease.key + "-" + lease.token + ".dat");
-                Files.write(target, snapshot, StandardOpenOption.CREATE_NEW);
-                log.error("Unsaved fenced snapshot retained at {}; it will not be replayed over a newer owner", target);
-            } catch (Exception e) {
-                log.error("Cannot retain fenced snapshot for {}", lease.key, e);
-            }
-        })) log.error("Cannot queue recovery snapshot for {}; SQL IO queue is full or closed", lease.key);
     }
 
     @Override
@@ -389,9 +360,10 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
     @Override
     public void pushMail(UUID key, String payload) {
         if (!mailbox) throw new IllegalStateException("This repository has no mailbox");
-        if (closing.get()) throw new IllegalStateException("Storage is closed");
-        outbox.append(key, payload);
-        outboxAfter = now();
+        synchronized (outbox) {
+            if (closing.get()) throw new IllegalStateException("Storage is closed");
+            outbox.add(new Mail(UUID.randomUUID(), key, payload));
+        }
     }
 
     private void flushOutbox() {
@@ -399,10 +371,10 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
         if (!submit(() -> {
             try {
                 int limit = 32;
-                for (Mail mail : outbox.pending()) {
+                for (Mail mail : outbox) {
                     if (limit-- == 0) break;
                     if (!database.admit(mail)) throw new IllegalStateException("Conflicting mailbox ID " + mail.id());
-                    outbox.acknowledge(mail.id());
+                    outbox.remove(mail);
                     outboxFailures = 0;
                     Lease lease = leases.get(mail.owner());
                     if (lease != null && lease.mailReady) mailAfter = now();
@@ -410,7 +382,7 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
                 outboxAfter = now();
             } catch (Exception e) {
                 outboxAfter = now() + nanos(backoff(++outboxFailures));
-                log.error("SQL mail admission failed for {}; persisted outbox will retry", config, e);
+                log.error("SQL mail admission failed for {}; queued mail will retry", config, e);
             } finally {
                 outboxRunning.set(false);
             }
@@ -535,10 +507,12 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
 
     @Override
     public void close() {
-        if (!closing.compareAndSet(false, true)) return;
+        synchronized (outbox) {
+            if (!closing.compareAndSet(false, true)) return;
+        }
         for (Lease lease : leases.values()) unlock(lease.key, lease.version);
         long until = System.nanoTime() + nanos(Math.min(10_000, config.timeoutMillis * 4 + 1_000));
-        while (!leases.isEmpty() && System.nanoTime() - until < 0) {
+        while ((!leases.isEmpty() || (ready && !outbox.isEmpty())) && System.nanoTime() - until < 0) {
             try {
                 Thread.sleep(10);
             } catch (InterruptedException e) {
@@ -556,7 +530,8 @@ public final class JdbcPlayerDataStorage implements PlayerDataStorage {
             Thread.currentThread().interrupt();
             io.shutdownNow();
         }
-        outbox.close();
+        if (!outbox.isEmpty()) log.warn("Closing SQL storage with {} unconfirmed mails for {}", outbox.size(), config);
+        outbox.clear();
         pools.forEach(HikariDataSource::close);
         try {
             database.close();

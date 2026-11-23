@@ -15,8 +15,6 @@ import dev.by1337.sync.common.work.EventLoopWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -57,36 +55,6 @@ public class ClientChannel implements dev.by1337.sync.common.channel.pipeline.Co
             result.add(id, r.id(), r);
         }
         return result;
-    }
-
-    public Path mailboxDirectory() {
-        return resolveMailboxDirectory(Path.of("bsync", "mail-outbox"), connection.mailboxIdentity(),
-                connection.legacyMailboxIdentity(), id);
-    }
-
-    static synchronized Path resolveMailboxDirectory(Path root, String identity, String legacyIdentity, String channel) {
-        Path directory = root.resolve(java.util.UUID.nameUUIDFromBytes((identity + "\n" + channel)
-                .getBytes(StandardCharsets.UTF_8)).toString());
-        Path legacy = root.resolve(java.util.UUID.nameUUIDFromBytes((legacyIdentity + "\n" + channel)
-                .getBytes(StandardCharsets.UTF_8)).toString());
-        if (!directory.equals(legacy) && java.nio.file.Files.isDirectory(legacy)) {
-            // Reuse the journal's ID-preserving admission/ack protocol: a crash at
-            // any step leaves the record in at least one of the two directories.
-            try (var old = new dev.by1337.sync.common.mail.MailJournal(legacy)) {
-                var pending = old.pending();
-                if (!pending.isEmpty()) {
-                    try (var target = new dev.by1337.sync.common.mail.MailJournal(directory)) {
-                        for (var mail : pending) {
-                            target.append(mail);
-                            old.acknowledge(mail.id());
-                        }
-                    }
-                    LoggerFactory.getLogger(ClientChannel.class).info("Migrated legacy mailbox outbox {} -> {} records={}",
-                            legacy, directory, pending.size());
-                }
-            }
-        }
-        return directory;
     }
 
     public Pipeline pipeline() {

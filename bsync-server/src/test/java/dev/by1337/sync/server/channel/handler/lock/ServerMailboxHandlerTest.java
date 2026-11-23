@@ -56,7 +56,6 @@ class ServerMailboxHandlerTest {
             locks = new ServerLockerHandler();
             pipeline = new Pipeline(WORKER).addLast("mailbox", handler);
             set(handler, "mailbox", repository);
-            set(handler, "localOutbox", new MailJournal(null));
             set(handler, "locks", locks);
             set(handler, "pipeline", pipeline);
             set(handler, "eventLoop", WORKER);

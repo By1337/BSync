@@ -38,7 +38,7 @@ class ClientTransferTest {
                     else ctx.fire(message);
                 }
             });
-            handler = new ClientLocksHandler(Locks.Type.ALL, null);
+            handler = new ClientLocksHandler(Locks.Type.ALL);
             handler.lockManager(new LockManager() {
                 public boolean ensureLockOwnership(UUID key) {
                     return false;

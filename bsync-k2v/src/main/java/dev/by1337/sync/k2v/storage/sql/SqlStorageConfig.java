@@ -133,12 +133,6 @@ public final class SqlStorageConfig {
         return scheme.equals("mysql") ? "com.mysql.cj.jdbc.Driver" : "org.mariadb.jdbc.Driver";
     }
 
-    /** Journal identity is stable across credential rotation and driver choice. */
-    public String journalIdentity() {
-        if (isSqlite()) return "sqlite:" + database + "/" + repository;
-        return host + ":" + port + "/" + database + "/" + repository;
-    }
-
     @Override
     public String toString() {
         if (isSqlite()) return "sqlite://" + Path.of(database).toUri().getRawPath() + "?repository=" + repository;

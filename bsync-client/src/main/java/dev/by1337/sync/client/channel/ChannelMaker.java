@@ -33,7 +33,7 @@ public class ChannelMaker {
                 type.channelType,
                 id,
                 cc -> {
-                    var locks = new ClientLocksHandler(type, cc.mailboxDirectory());
+                    var locks = new ClientLocksHandler(type);
                     locks.lockManager(manager);
                     cc.pipeline()
                             .addLast("locks", locks);
@@ -106,7 +106,7 @@ public class ChannelMaker {
     public static ChannelData<Locks> createLocks(Connection c, String id, LockManager manager, Locks.Type type) {
 
         var v = c.addChannel(id, type.channelType, cc -> {
-            var locks = new ClientLocksHandler(type, cc.mailboxDirectory());
+            var locks = new ClientLocksHandler(type);
             locks.lockManager(manager);
             cc.pipeline()
                     .addLast("locks", locks);

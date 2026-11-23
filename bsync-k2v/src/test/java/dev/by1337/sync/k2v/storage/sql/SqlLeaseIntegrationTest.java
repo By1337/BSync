@@ -4,10 +4,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import dev.by1337.sync.k2v.mail.Mail;
 import dev.by1337.sync.k2v.transfer.*;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.io.TempDir;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -17,8 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Opt in against a disposable database with BSYNC_SQL_TEST_PORT and BSYNC_SQL_TEST_SCHEME. */
 class SqlLeaseIntegrationTest {
-    @TempDir
-    Path directory;
     private SqlStorageConfig config;
     private HikariDataSource data, heartbeat;
     private SqlLeaseRepository database;
@@ -188,7 +184,7 @@ class SqlLeaseIntegrationTest {
 
     @Test
     void storageInstancesFenceStaleWritesAndPermitHandoff() throws Exception {
-        try (StorageHandle first = storage("one"); StorageHandle second = storage("two")) {
+        try (StorageHandle first = storage(); StorageHandle second = storage()) {
             assertTrue(acquire(first.value));
             assertFalse(acquire(second.value));
             var lost = new CountDownLatch(1);
@@ -206,14 +202,18 @@ class SqlLeaseIntegrationTest {
     }
 
     @Test
-    void storageMailboxRetriesHandlerAndSurvivesProducerRestart() throws Exception {
-        Path producerPath = directory.resolve("producer");
-        JdbcPlayerDataStorage producer = new JdbcPlayerDataStorage(config, producerPath, true, true);
-        producer.pushMail(player, "restart reward");
-        producer.close();
-        try (StorageHandle restarted = new StorageHandle(new JdbcPlayerDataStorage(config, producerPath, true, true));
-            StorageHandle recipient = storage("recipient")) {
-            restarted.value.initialized().get(5, TimeUnit.SECONDS);
+    void storageMailboxRetriesHandlerForCommittedMailAfterProducerCloses() throws Exception {
+        try (StorageHandle producer = storage()) {
+            producer.value.pushMail(player, "reward");
+            await(() -> {
+                try {
+                    return !database.exportMails(0).entries().isEmpty();
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+        try (StorageHandle recipient = storage()) {
             assertTrue(acquire(recipient.value));
             var ids = new CopyOnWriteArrayList<UUID>();
             var delivered = new CountDownLatch(1);
@@ -237,7 +237,7 @@ class SqlLeaseIntegrationTest {
 
     @Test
     void importRefusesLiveLeasesAndRetainsExistingMailIds() throws Exception {
-        try (StorageHandle storage = storage("import")) {
+        try (StorageHandle storage = storage()) {
             UUID token = UUID.randomUUID();
             database.claim(player, token);
             var data = new TransferEntry(TransferEntry.Kind.DATA, player, new byte[]{ 3 }, null);
@@ -254,8 +254,8 @@ class SqlLeaseIntegrationTest {
         }
     }
 
-    private StorageHandle storage(String name) throws Exception {
-        var result = new StorageHandle(new JdbcPlayerDataStorage(config, directory.resolve(name), true, true));
+    private StorageHandle storage() throws Exception {
+        var result = new StorageHandle(new JdbcPlayerDataStorage(config, true, true));
         result.value.initialized().get(5, TimeUnit.SECONDS);
         return result;
     }

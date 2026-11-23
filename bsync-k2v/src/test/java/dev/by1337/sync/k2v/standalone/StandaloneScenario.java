@@ -78,7 +78,7 @@ public final class StandaloneScenario {
 
     private static PlayerDataStorage storage(Path directory, boolean sqlite) throws Exception {
         if (!sqlite) return new FilePlayerDataStorage(directory.toFile());
-        var value = new JdbcPlayerDataStorage(SqlStorageConfig.parse("sqlite://data.db?poll=1s", directory), directory.resolve("sql"), true, true);
+        var value = new JdbcPlayerDataStorage(SqlStorageConfig.parse("sqlite://data.db?poll=1s", directory), true, true);
         try {
             var initialized = JdbcPlayerDataStorage.class.getDeclaredMethod("initialized");
             initialized.setAccessible(true);

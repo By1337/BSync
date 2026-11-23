@@ -275,14 +275,6 @@ public class Connection implements SocketConnection {
         return closeFuture;
     }
 
-    public String mailboxIdentity() {
-        return id + "\n" + config.ip() + ":" + config.port();
-    }
-
-    public String legacyMailboxIdentity() {
-        return id;
-    }
-
     public ConnectionConfig config() {
         return config;
     }

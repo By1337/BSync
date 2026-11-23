@@ -7,7 +7,6 @@ import dev.by1337.sync.common.channel.ChannelMessage;
 import dev.by1337.sync.common.channel.handler.request.IncomingRequest;
 import dev.by1337.sync.common.channel.pipeline.*;
 import dev.by1337.sync.common.mail.Mail;
-import dev.by1337.sync.common.mail.MailJournal;
 import dev.by1337.sync.common.packet.impl.c2s.*;
 import dev.by1337.sync.common.packet.impl.s2c.S2CExportPagePacket;
 import dev.by1337.sync.common.packet.impl.s2c.S2CForceUnlockPacket;
@@ -23,10 +22,10 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -34,7 +33,7 @@ import java.util.function.BiConsumer;
 public final class ClientLocksHandler implements ChannelHandler, Locks {
     public static final int MAX_BLOB_SIZE = (16 << 20) - 128;
     private static final long MAIL_REQUEST_TIMEOUT = 5_000;
-    private final MailJournal outbox;
+    private final Queue<Mail> outbox = new ConcurrentLinkedQueue<>();
     private final Map<UUID, Object> inFlightMails = new HashMap<>();
     private final Map<UUID, Integer> mailFailures = new HashMap<>();
     private final Map<UUID, Long> nextMailAttempt = new HashMap<>();
@@ -54,15 +53,8 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
 
     private BSUtils.FaultIsolation<LockManager> lockManager;
 
-    /** Low-level in-memory transport; use ChannelMaker for a persistent production outbox. */
-    @Deprecated
-    public ClientLocksHandler(Type type1) {
-        this(type1, null);
-    }
-
-    public ClientLocksHandler(Type type, Path journalDirectory) {
+    public ClientLocksHandler(Type type) {
         this.type = type;
-        this.outbox = new MailJournal(journalDirectory);
     }
 
     public void lockManager(LockManager lockManager) {
@@ -163,7 +155,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                         new C2SLockAndGetBlobRequestPacket(entry.getKey(), 1, true).request(pipeline, remote)
                                 .then(status -> {
                                     if (status == null || status.isRejected()) {
-                                        log.error("Failed to recovery lock {} DATA LOST {}", key, arrayToBase64(blob));
+                                        log.error("Failed to recover unsaved snapshot for {}", key);
                                         return;
                                     }
                                     remote.write(new C2SFlushBlobPacket(key, status.token(), 1, blob));
@@ -192,11 +184,16 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     @Override
     public void close() {
         if (eventLoop != null) eventLoop.assertThread();
-        if (closing) return;
-        closing = true;
+        synchronized (outbox) {
+            if (closing) return;
+            closing = true;
+        }
         mailboxActive = false;
         inFlightMails.clear();
-        outbox.close();
+        if (!outbox.isEmpty()) log.warn("Discarding {} unconfirmed mails on channel close", outbox.size());
+        outbox.clear();
+        mailFailures.clear();
+        nextMailAttempt.clear();
         for (var lock : List.copyOf(locks.entrySet())) {
             try {
                 var data = lock.getValue();
@@ -214,17 +211,19 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     @Override
     public void pushMail(UUID key, String json) {
         if (!type.hasMailbox) throw new IllegalStateException("Mailbox is not enabled for this channel");
-        if (closing) throw new IllegalStateException("Mailbox is closed");
-        // Persist in the caller before returning, including when disconnected or before init.
-        outbox.append(key, json);
-        if (eventLoop != null) eventLoop.execute(this::flushPendingMails);
+        synchronized (outbox) {
+            if (closing) throw new IllegalStateException("Mailbox is closed");
+            outbox.add(new Mail(UUID.randomUUID(), key, json));
+        }
+        EventLoopWorker worker = eventLoop;
+        if (worker != null) worker.schedule(this::flushPendingMails);
     }
 
     private void flushPendingMails() {
         if (closing || !mailboxActive) return;
         Set<UUID> owners = new HashSet<>();
         long now = System.nanoTime();
-        for (Mail mail : outbox.pending()) {
+        for (Mail mail : outbox) {
             if (!owners.add(mail.owner())) continue; // preserve producer order per player
             if (inFlightMails.size() >= 32) return;
             if (inFlightMails.containsKey(mail.id()) || nextMailAttempt.getOrDefault(mail.id(), 0L) > now) continue;
@@ -233,22 +232,18 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
             new C2SPushMailPacket(mail.owner(), mail.payload(), mail.id())
                     .request(pipeline, remote, MAIL_REQUEST_TIMEOUT).then(response -> {
                         if (!inFlightMails.remove(mail.id(), attempt)) return;
-                        if (closing) return; // the persisted record is replayed on reopening
+                        if (closing) return;
                         if (response != null && response.flag()) {
-                            try {
-                                outbox.acknowledge(mail.id());
-                                mailFailures.remove(mail.id());
-                                nextMailAttempt.remove(mail.id());
-                                eventLoop.schedule(this::flushPendingMails);
-                            } catch (RuntimeException e) {
-                                log.error("Cannot remove confirmed mail from outbox id={} owner={}", mail.id(), mail.owner(), e);
-                            }
+                            outbox.remove(mail);
+                            mailFailures.remove(mail.id());
+                            nextMailAttempt.remove(mail.id());
+                            eventLoop.schedule(this::flushPendingMails);
                         } else {
                             int attempts = mailFailures.merge(mail.id(), 1, Integer::sum);
                             long delay = Math.min(60_000L, 1_000L << Math.min(attempts, 6));
                             nextMailAttempt.put(mail.id(), System.nanoTime() + delay * 1_000_000L);
                             if (attempts == 1 || attempts % 10 == 0)
-                                log.error("Mail not confirmed id={} owner={} attempts={} retryInMs={}; retained on disk",
+                                log.error("Mail not confirmed id={} owner={} attempts={} retryInMs={}; retained in memory",
                                         mail.id(), mail.owner(), attempts, delay);
                         }
                     });
@@ -336,7 +331,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
     public void pushSnapshot(UUID key, byte @Nullable [] snapshot) {
         if (snapshot == null) return;
         if (!ready) {
-            log.error("Failed to push snapshot channel is not ready! {} {}", key, arrayToBase64(snapshot));
+            log.error("Failed to push snapshot: channel is not ready for {}", key);
             return;
         }
         if (snapshot.length >= MAX_BLOB_SIZE) {
@@ -352,7 +347,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 if (recovery.containsKey(key)) {
                     recovery.put(key, snapshot);
                 } else {
-                    log.error("pushSnapshot for unlocked key! {} {}", key, arrayToBase64(snapshot));
+                    log.error("pushSnapshot for unlocked key {}", key);
                 }
                 return;
             }
@@ -388,7 +383,7 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                     if (!isLocked(key)) return;
                     if (state == null || !state) {
                         if (counter >= 10) {
-                            log.error("Failed to flush {} DATA LOST {}", key, arrayToBase64(snapshot));
+                            log.error("Failed to flush unsaved snapshot for {}", key);
                         } else {
                             eventLoop.schedule(() -> sendSnapshot(key, snapshot, token, version, counter + 1), 2000);
                         }
@@ -421,17 +416,13 @@ public final class ClientLocksHandler implements ChannelHandler, Locks {
                 new C2SFlushBlobPacket(key, lock.token, lock.snapshotVersion, lock.snapshot).withAck(pipeline, remote)
                         .then(state -> {
                             if (Boolean.FALSE.equals(state)) {
-                                log.error("DATA LOST! Server is not accepted blob {} {}", key, arrayToBase64(lock.snapshot));
+                                log.error("Server rejected unsaved snapshot for {}", key);
                             }
                             locks.remove(key, lock);
                             remote.write(new C2SUnlockPacket(key, lock.token));
                         });
             }
         });
-    }
-
-    private String arrayToBase64(byte[] arr) {
-        return arr == null ? "null" : Base64.getEncoder().encodeToString(arr);
     }
 
     @Override
